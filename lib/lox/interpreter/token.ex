@@ -32,17 +32,17 @@ defmodule Lox.Interpreter.Token do
           :and
           | :class
           | :else
-          | false
+          | :Qfalse
           | :fun
           | :for
           | :if
-          | nil
+          | :Qnil
           | :or
           | :print
           | :return
           | :super
           | :this
-          | true
+          | :Qtrue
           | :var
           | :while
 

@@ -274,4 +274,10 @@ defmodule Lox do
 
   [Lox]: https://craftinginterpreters.com/the-lox-language.html
   """
+
+  @type expr :: literal | unary_op | binary_op | group
+  @type binary_op :: {:binary, left :: expr, operator :: Token.t(), right :: expr}
+  @type literal :: {:literal, value :: number() | binary() | true | false | nil}
+  @type unary_op :: {:unary, operator :: Token.t(), right :: expr}
+  @type group :: {:group, expr :: expr}
 end

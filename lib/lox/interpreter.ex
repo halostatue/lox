@@ -4,6 +4,8 @@ defmodule Lox.Interpreter do
   nominally called `jlox`.
   """
 
+  alias Lox.Interpreter.Ast
+  alias Lox.Interpreter.Parser
   alias Lox.Interpreter.Scanner
 
   def main([script]), do: run_file(script)
@@ -51,13 +53,11 @@ defmodule Lox.Interpreter do
   end
 
   defp run(source) do
-    # Just print the tokens for now
-    case Scanner.scan_tokens(source) do
-      {:ok, tokens} ->
-        Enum.each(tokens, &IO.puts/1)
-        {:ok, nil}
-
-      {:error, _error} ->
+    with {:ok, tokens} <- Scanner.scan_tokens(source),
+         {:ok, expr} <- Parser.parse(tokens) do
+      Ast.print(expr)
+    else
+      {:error, _} ->
         IO.puts("Error!")
         :error
     end
