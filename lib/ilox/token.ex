@@ -1,4 +1,4 @@
-defmodule Lox.Interpreter.Token do
+defmodule Ilox.Token do
   @moduledoc """
   Scanning token types
   """

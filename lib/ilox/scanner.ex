@@ -1,56 +1,32 @@
-defmodule Lox.Interpreter.Scanner do
+defmodule Ilox.Scanner do
   @moduledoc """
-  Lox scanner.
+  Ilox source scanner.
   """
 
-  alias Lox.Interpreter
-  alias Lox.Interpreter.Token
+  alias Ilox.Token
 
-  @type t :: %__MODULE__{
-          source: binary(),
+  @type ctx :: %{
+          current: binary(),
+          error: boolean(),
+          line: non_neg_integer(),
+          literal: binary(),
+          rest: binary(),
           tokens: list(Token.t())
         }
 
-  defstruct [:source, tokens: []]
-
-  def new(source), do: %__MODULE__{source: source}
-
   def scan_tokens(source) when is_binary(source) do
-    result =
-      source
-      |> new()
-      |> ctx()
-      |> scan_next_token()
-
-    case result do
-      %{error: true, scanner: %{tokens: tokens}} -> {:error, tokens}
-      %{scanner: %{tokens: tokens}} -> {:ok, tokens}
+    case scan_next_token(ctx(source)) do
+      %{error: true, tokens: tokens} -> {:error, tokens}
+      %{tokens: tokens} -> {:ok, tokens}
     end
   end
 
-  defp ctx(%__MODULE__{} = scanner) do
-    %{
-      error: false,
-      # The current token
-      current: "",
-      # The literal being built
-      literal: "",
-      # The rest of the source
-      rest: scanner.source,
-      # The current line
-      line: 1,
-      scanner: scanner
-    }
-  end
+  defp ctx(source), do: %{current: "", line: 1, literal: "", rest: source, tokens: []}
 
   defp add_token(context, type, literal \\ nil) do
     token = Token.new(type, context.current, literal, context.line)
 
-    %{
-      context
-      | current: "",
-        scanner: %{context.scanner | tokens: [token | context.scanner.tokens]}
-    }
+    %{context | current: "", tokens: [token | context.tokens]}
   end
 
   defp add_compound_token(context, match, left_type, right_type) do
@@ -89,8 +65,8 @@ defmodule Lox.Interpreter.Scanner do
   defguardp is_whitespace(c) when c in ["\r", "\s", "\t"]
 
   defp scan_next_token(%{rest: ""} = context) do
-    tokens = Enum.reverse([Token.new(:eof, "", nil, context.line) | context.scanner.tokens])
-    %{context | scanner: %{context.scanner | tokens: tokens}}
+    tokens = Enum.reverse([Token.new(:eof, "", nil, context.line) | context.tokens])
+    %{context | tokens: tokens}
   end
 
   defp scan_next_token(%{rest: source} = context) do
@@ -119,14 +95,10 @@ defmodule Lox.Interpreter.Scanner do
         c when is_whitespace(c) -> %{context | current: ""}
         c when is_digit(c) -> handle_number(%{context | current: c})
         c when is_alpha(c) -> handle_identifier(%{context | current: c})
-        invalid -> error(context, "Unexpected character (`#{invalid}`).")
+        invalid -> Ilox.error(context, "Unexpected character (`#{invalid}`).")
       end
 
     scan_next_token(context)
-  end
-
-  defp error(context, message) do
-    Interpreter.error(context, message)
   end
 
   @keywords %{
@@ -197,9 +169,7 @@ defmodule Lox.Interpreter.Scanner do
     end
   end
 
-  defp handle_string(%{rest: ""} = context) do
-    Interpreter.error(context, "Unterminated string.")
-  end
+  defp handle_string(%{rest: ""} = context), do: Ilox.error(context, "Unterminated string.")
 
   defp handle_string(%{current: current, literal: literal, rest: rest} = context) do
     case String.next_codepoint(rest) do

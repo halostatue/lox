@@ -1,20 +1,26 @@
-defmodule Lox.Interpreter.Parser do
+defmodule Ilox.ParserError do
+  defexception [:context, :message, where: nil]
+end
+
+defmodule Ilox.Parser do
   @moduledoc """
   We don't need a visitor pattern, we have pattern matching.
   """
 
-  alias Lox.Interpreter.Token
+  alias Ilox.Token
 
   def parse(tokens) do
     expr = expression(tokens)
 
     {:ok, expr}
   rescue
-    _e -> {:error, nil}
+    e in Ilox.ParserError ->
+      Ilox.error(e.context, e.message, e.where)
+      :error
   end
 
   # defp
-  @spec expression(tokens :: list(Token.t())) :: Lox.expr()
+  @spec expression(tokens :: list(Token.t())) :: Ilox.expr()
   defp expression(tokens) when is_list(tokens) do
     {expr, _tokens} =
       equality(tokens)
@@ -116,17 +122,17 @@ defmodule Lox.Interpreter.Parser do
   end
 
   defp primary([current | _]) do
-    raise error(current.line, "", "Expect expression.")
+    raise Ilox.ParserError, context: current, message: "Expect expression."
   end
 
   defp consume_next([%{type: type} | tokens], type, _message), do: tokens
 
   defp consume_next([%{type: :eof} = token | _], _type, message) do
-    raise error(token.line, " at end", message)
+    raise Ilox.ParserError, context: token, message: message, where: "at end"
   end
 
   defp consume_next([token | _], _type, message) do
-    raise error(token.line, " at '#{token.lexeme}'", message)
+    raise Ilox.ParserError, context: token, message: message, where: "at '#{token.lexeme}'"
   end
 
   # Call after catching the error from consume_next
@@ -140,14 +146,6 @@ defmodule Lox.Interpreter.Parser do
       current.type in [:class, :fun, :var, :for, :if, :while, :print, :return] -> tokens
       true -> synchronize(tokens)
     end
-  end
-
-  defp error(line, where, message) do
-    message = "[#{line}] Error#{where}: #{message}"
-
-    IO.puts(:stderr, message)
-
-    raise message
   end
 
   defp type_match(%Token{type: :eof}, _types), do: false

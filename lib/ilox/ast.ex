@@ -1,5 +1,5 @@
-defmodule Lox.Interpreter.Ast do
-  alias Lox.Interpreter.Token
+defmodule Ilox.Ast do
+  alias Ilox.Token
 
   def print(expr) do
     expr
@@ -7,7 +7,7 @@ defmodule Lox.Interpreter.Ast do
     |> IO.puts()
   end
 
-  @spec as_string(Lox.expr()) :: binary()
+  @spec as_string(Ilox.expr()) :: binary()
   def as_string({:binary, left, %Token{lexeme: lexeme}, right}),
     do: parenthesize([lexeme, left, right])
 
