@@ -62,6 +62,8 @@ defmodule Ilox.Token do
   def new(type, lexeme, literal, line),
     do: %__MODULE__{type: type, lexeme: lexeme, literal: literal, line: line}
 
+  def eof(line \\ 0), do: new(:eof, "", nil, line)
+
   def to_string(%__MODULE__{type: type, lexeme: lexeme, literal: literal, line: line}) do
     "#{line}: #{type} \"#{lexeme}\" #{literal}"
   end

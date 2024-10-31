@@ -13,11 +13,17 @@ defmodule Ilox do
   alias Ilox.Scanner
   alias Ilox.Token
 
-  @type expr :: literal | unary_op | binary_op | group
-  @type binary_op :: {:binary, left :: expr, operator :: Token.t(), right :: expr}
-  @type literal :: {:literal, value :: number() | binary() | true | false | nil}
-  @type unary_op :: {:unary, operator :: Token.t(), right :: expr}
-  @type group :: {:group, expr :: expr}
+  # Expressions
+  @type expr :: literal_expr | unary_expr | binary_expr | group_expr
+  @type binary_expr :: {:binary_expr, left :: expr, operator :: Token.t(), right :: expr}
+  @type literal_expr :: {:literal_expr, value :: number() | binary() | true | false | nil}
+  @type unary_expr :: {:unary_expr, operator :: Token.t(), right :: expr}
+  @type group_expr :: {:group_expr, expr :: expr}
+
+  # Statements
+  @type stmt :: expr_stmt | print_stmt
+  @type expr_stmt :: {:expr_stmt, expr :: expr}
+  @type print_stmt :: {:print_stmt, expr :: expr}
 
   defdelegate add_error(message), to: Context
 
@@ -103,8 +109,8 @@ defmodule Ilox do
 
   defp run_ilox(source) do
     with {:ok, tokens} <- Scanner.scan_tokens(source),
-         {:ok, expr} <- Parser.parse(tokens),
-         {:ok, result} <- Interpreter.interpret(expr) do
+         {:ok, statements} <- Parser.parse(tokens),
+         {:ok, result} <- Interpreter.interpret(statements) do
       {:ok, result}
     else
       e -> show_ilox_error(e)

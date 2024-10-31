@@ -9,9 +9,9 @@ defmodule Ilox.Errors do
 
   def format(%{line: line}, message, where), do: format(line, message, where)
 
-  def format(line, message, nil), do: "[#{line}] Error: #{message}"
+  def format(line, message, nil), do: "[line #{line}] Error: #{message}"
 
-  def format(line, message, where), do: "[#{line}] Error #{where}: #{message}"
+  def format(line, message, where), do: "[line #{line}] Error #{where}: #{message}"
 end
 
 defmodule Ilox.RuntimeError do

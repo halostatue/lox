@@ -17,7 +17,9 @@ defmodule Ilox.Context do
   end
 
   def add_error(ctx, exception) when is_struct(exception),
-    do: add_error(ctx, Ilox.Errors.format(exception))
+    do:
+      add_error(ctx, Ilox.Errors.format(exception))
+      |> dbg()
 
   def add_error(ctx, message) when is_binary(message), do: [message | ctx]
 

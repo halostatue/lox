@@ -4,7 +4,16 @@ defmodule Ilox.Interpreter do
   """
   alias Ilox.Token
 
-  def interpret(expr) do
+  def interpret(statements) when is_list(statements) do
+    for statement <- statements do
+      eval(statement)
+    end
+  rescue
+    e in Ilox.RuntimeError ->
+      {:error, :runtime, Exception.message(e)}
+  end
+
+  def interpret_expr(expr) when is_tuple(expr) do
     result = stringify(eval(expr))
 
     {:ok, result}
@@ -23,11 +32,11 @@ defmodule Ilox.Interpreter do
 
   defp stringify(value), do: to_string(value)
 
-  defp eval({:literal, nil}), do: nil
-  defp eval({:literal, %{literal: literal}}), do: literal
-  defp eval({:group, expr}), do: eval(expr)
+  defp eval({:literal_expr, value}) when value in [true, false, nil], do: value
+  defp eval({:literal_expr, %{literal: literal}}), do: literal
+  defp eval({:group_expr, expr}), do: eval(expr)
 
-  defp eval({:unary, %Token{} = operator, right}) do
+  defp eval({:unary_expr, %Token{} = operator, right}) do
     right = eval(right)
 
     # is_truthy is not required, as Elixir values are truthy the way Lox requires
@@ -39,7 +48,7 @@ defmodule Ilox.Interpreter do
     end
   end
 
-  defp eval({:binary, left, %Token{} = operator, right}) do
+  defp eval({:binary_expr, left, %Token{} = operator, right}) do
     left = eval(left)
     right = eval(right)
 
@@ -69,6 +78,17 @@ defmodule Ilox.Interpreter do
       :bang_equal -> left != right
       :equal_equal -> left == right
     end
+  end
+
+  defp eval({:expr_stmt, expr}) do
+    eval(expr)
+    nil
+  end
+
+  defp eval({:print_stmt, expr}) do
+    value = eval(expr)
+    IO.puts(stringify(value))
+    nil
   end
 
   defp invalid_operands!(%Token{type: type} = token) when type == :plus,
