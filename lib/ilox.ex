@@ -6,8 +6,9 @@ defmodule Ilox do
   [3]: https://craftinginterpreters.com/a-tree-walk-interpreter.html
   """
 
-  alias Ilox.Ast
+  alias Ilox.AstPrinter
   alias Ilox.Context
+  alias Ilox.Interpreter
   alias Ilox.Parser
   alias Ilox.Scanner
   alias Ilox.Token
@@ -17,6 +18,8 @@ defmodule Ilox do
   @type literal :: {:literal, value :: number() | binary() | true | false | nil}
   @type unary_op :: {:unary, operator :: Token.t(), right :: expr}
   @type group :: {:group, expr :: expr}
+
+  defdelegate add_error(message), to: Context
 
   def run, do: run([])
 
@@ -32,16 +35,35 @@ defmodule Ilox do
     System.halt(64)
   end
 
-  def run_string(string), do: run_ilox(string)
+  def scan(source) when is_binary(source), do: Scanner.scan_tokens(source)
 
-  def error(code_context, message, where \\ nil) do
-    %{errors: [last_message | _]} = Context.add_error(nil, code_context, message, where)
-    IO.puts(:stderr, last_message)
+  def parse(tokens) when is_list(tokens), do: Parser.parse(tokens)
+
+  def parse(tokenable) do
+    with {:ok, tokens} <- scan(tokenable) do
+      parse(tokens)
+    end
+  end
+
+  def print_ast(expr) when is_tuple(expr), do: AstPrinter.print(expr)
+
+  def print_ast(astable) do
+    with {:ok, expr} <- parse(astable) do
+      print_ast(expr)
+    end
+  end
+
+  def interpret(source) when is_binary(source) do
+    with {:ok, expr} <- parse(source) do
+      Interpreter.interpret(expr)
+    end
   end
 
   defp run_script_file(path) do
     case run_ilox(File.read!(path)) do
-      :error -> System.halt(65)
+      {:error, :scanner} -> System.halt(65)
+      {:error, :parser} -> System.halt(66)
+      {:error, :interpreter} -> System.halt(70)
       {:ok, _result} -> :ok
     end
   end
@@ -65,8 +87,11 @@ defmodule Ilox do
         "\n" ->
           :cont
 
-        data ->
-          if ilox_result = run_ilox(data), do: IO.puts("==> #{ilox_result}")
+        source ->
+          case run_ilox(source) do
+            {:ok, result} -> IO.puts("==> #{result}")
+            {:error, _} -> nil
+          end
 
           # Clear the context on each line, for now.
           Context.clear()
@@ -78,20 +103,36 @@ defmodule Ilox do
 
   defp run_ilox(source) do
     with {:ok, tokens} <- Scanner.scan_tokens(source),
-         {:ok, expr} <- Parser.parse(tokens) do
-      Ast.print(expr)
-      nil
+         {:ok, expr} <- Parser.parse(tokens),
+         {:ok, result} <- Interpreter.interpret(expr) do
+      {:ok, result}
     else
-      :error -> run_ilox_error()
-      {:error, _} -> run_ilox_error()
+      e -> show_ilox_error(e)
     end
   end
 
-  defp run_ilox_error(message \\ nil) do
-    IO.write(:stder, "Error")
+  defp show_ilox_error({:error, type, nil}) do
+    IO.puts(:stderr, "Unknown error!")
+    {:error, type}
+  end
 
-    if message, do: IO.puts(:stderr, ": " <> message), else: IO.puts(:stderr, "!")
+  defp show_ilox_error({:error, type, []}) do
+    IO.puts(:stderr, "Unknown error!")
+    {:error, type}
+  end
 
-    :error
+  defp show_ilox_error({:error, type, error}) when is_binary(error) do
+    IO.puts(:stderr, error)
+    {:error, type}
+  end
+
+  defp show_ilox_error({:error, type, [error]}) do
+    IO.puts(:stderr, error)
+    {:error, type}
+  end
+
+  defp show_ilox_error({:error, type, errors}) when is_list(errors) do
+    IO.puts(:stderr, Enum.join(errors, "\n"))
+    {:error, type}
   end
 end

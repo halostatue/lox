@@ -3,11 +3,12 @@ defmodule Ilox.Scanner do
   Ilox source scanner.
   """
 
+  alias Ilox.Errors
   alias Ilox.Token
 
   @type ctx :: %{
           current: binary(),
-          error: boolean(),
+          errors: list(binary()),
           line: non_neg_integer(),
           literal: binary(),
           rest: binary(),
@@ -16,12 +17,15 @@ defmodule Ilox.Scanner do
 
   def scan_tokens(source) when is_binary(source) do
     case scan_next_token(ctx(source)) do
-      %{error: true, tokens: tokens} -> {:error, tokens}
-      %{tokens: tokens} -> {:ok, tokens}
+      %{errors: [], tokens: tokens} -> {:ok, tokens}
+      %{errors: errors} -> {:error, :scanner, Enum.reverse(errors)}
     end
   end
 
-  defp ctx(source), do: %{current: "", line: 1, literal: "", rest: source, tokens: []}
+  defp ctx(source), do: %{current: "", errors: [], line: 1, literal: "", rest: source, tokens: []}
+
+  defp error(context, message),
+    do: %{context | errors: [Errors.format(context, message) | context.errors]}
 
   defp add_token(context, type, literal \\ nil) do
     token = Token.new(type, context.current, literal, context.line)
@@ -95,7 +99,7 @@ defmodule Ilox.Scanner do
         c when is_whitespace(c) -> %{context | current: ""}
         c when is_digit(c) -> handle_number(%{context | current: c})
         c when is_alpha(c) -> handle_identifier(%{context | current: c})
-        invalid -> Ilox.error(context, "Unexpected character (`#{invalid}`).")
+        invalid -> error(context, "Unexpected character (`#{invalid}`).")
       end
 
     scan_next_token(context)
@@ -169,7 +173,7 @@ defmodule Ilox.Scanner do
     end
   end
 
-  defp handle_string(%{rest: ""} = context), do: Ilox.error(context, "Unterminated string.")
+  defp handle_string(%{rest: ""} = context), do: error(context, "Unterminated string.")
 
   defp handle_string(%{current: current, literal: literal, rest: rest} = context) do
     case String.next_codepoint(rest) do

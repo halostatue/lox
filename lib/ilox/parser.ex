@@ -1,7 +1,3 @@
-defmodule Ilox.ParserError do
-  defexception [:context, :message, where: nil]
-end
-
 defmodule Ilox.Parser do
   @moduledoc """
   We don't need a visitor pattern, we have pattern matching.
@@ -10,18 +6,19 @@ defmodule Ilox.Parser do
   alias Ilox.Token
 
   def parse(tokens) do
-    expr = expression(tokens)
-
-    {:ok, expr}
+    {:ok, parse_expression(tokens)}
   rescue
     e in Ilox.ParserError ->
-      Ilox.error(e.context, e.message, e.where)
-      :error
+      message = Exception.message(e)
+
+      Ilox.add_error(message)
+
+      {:error, :parser, message}
   end
 
   # defp
-  @spec expression(tokens :: list(Token.t())) :: Ilox.expr()
-  defp expression(tokens) when is_list(tokens) do
+  @spec parse_expression(tokens :: list(Token.t())) :: Ilox.expr()
+  defp parse_expression(tokens) when is_list(tokens) do
     {expr, _tokens} =
       equality(tokens)
 
@@ -117,7 +114,7 @@ defmodule Ilox.Parser do
     do: {{:literal, current}, tokens}
 
   defp primary([%Token{type: :left_paren} | tokens]) do
-    {expr, tokens} = expression(tokens)
+    {expr, tokens} = parse_expression(tokens)
     {{:group, expr}, consume_next(tokens, :right_paren, "Expect ')' after expression.")}
   end
 

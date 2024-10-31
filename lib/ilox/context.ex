@@ -4,50 +4,33 @@ defmodule Ilox.Context do
   execution errors.
   """
 
-  defstruct error?: false, errors: []
-
   @ilox_context :"$ilox_context"
-
-  def new, do: %__MODULE__{}
 
   def clear, do: Process.delete(@ilox_context)
 
-  def format_error(code_context, message, where \\ nil) do
-    where =
-      if String.starts_with?(where, " ") do
-        where
-      else
-        " " <> where
-      end
+  def add_error(ctx \\ nil, message)
 
-    "[#{code_context.line}] Error#{where}: #{message}"
-  end
-
-  def all_errors(ctx \\ nil) do
-    case ctx || get_context() do
-      nil -> []
-      %{errors: errors} -> Enum.reverse(errors)
-    end
-  end
-
-  def add_error(ctx \\ nil, code_context, message, where \\ nil)
-
-  def add_error(nil, code_context, message, where) do
+  def add_error(nil, message) do
     get_context()
-    |> add_error(code_context, message, where)
+    |> add_error(message)
     |> put_context()
   end
 
-  def add_error(ctx, code_context, message, where), do: report(ctx, code_context, message, where)
+  def add_error(ctx, exception) when is_struct(exception),
+    do: add_error(ctx, Ilox.Errors.format(exception))
 
-  defp report(%__MODULE__{} = ctx, code_context, message, where) do
-    report_message = format_error(code_context, message, where)
-    %{ctx | error?: true, errors: [report_message | ctx.errors]}
+  def add_error(ctx, message) when is_binary(message), do: [message | ctx]
+
+  def errors(ctx \\ nil) do
+    case ctx || get_context() do
+      nil -> []
+      errors -> Enum.reverse(errors)
+    end
   end
 
   defp get_context, do: Process.get(@ilox_context)
 
-  defp put_context(%__MODULE__{} = ctx) do
+  defp put_context(ctx) when not is_nil(ctx) do
     Process.put(@ilox_context, ctx)
     ctx
   end

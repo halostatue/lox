@@ -1,4 +1,4 @@
-defmodule Ilox.Ast do
+defmodule Ilox.AstPrinter do
   alias Ilox.Token
 
   def print(expr) do
