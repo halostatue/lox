@@ -35,9 +35,10 @@ defmodule Lox.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp deps do
     [
-      {:ex_doc, "~> 0.34.0", only: :dev}
-      # {:dep_from_hexpm, "~> 0.3.0"},
-      # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}
+      {:type_check, "~> 0.13.3"},
+      {:credo, ">= 0.0.0", only: :dev},
+      {:ex_doc, "~> 0.34.0", only: :dev},
+      {:stream_data, "~> 0.5.0", only: :test}
     ]
   end
 end

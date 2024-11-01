@@ -61,36 +61,35 @@ defmodule Ilox.Interpreter do
     {env, left} = eval(env, left)
     {env, right} = eval(env, right)
 
-    numbers? = is_number(left) && is_number(right)
-    strings? = is_binary(left) && is_binary(right)
-
-    # Comparison operators *must* be restricted to numbers, because all values in the BEAM
-    # are comparables.
-    value =
-      case operator.type do
-        :minus when numbers? -> left - right
-        :minus -> raise Ilox.RuntimeError, invalid_operands!(operator)
-        :slash when numbers? -> left / right
-        :slash -> raise Ilox.RuntimeError, invalid_operands!(operator)
-        :star when numbers? -> left * right
-        :star -> raise Ilox.RuntimeError, invalid_operands!(operator)
-        :plus when numbers? -> left + right
-        :plus when strings? -> left <> right
-        :plus -> raise Ilox.RuntimeError, invalid_operands!(operator)
-        :greater when numbers? -> left > right
-        :greater -> raise Ilox.RuntimeError, invalid_operands!(operator)
-        :greater_equal when numbers? -> left >= right
-        :greater_equal -> raise Ilox.RuntimeError, invalid_operands!(operator)
-        :less when numbers? -> left < right
-        :less -> raise Ilox.RuntimeError, invalid_operands!(operator)
-        :less_equal when numbers? -> left <= right
-        :less_equal -> raise Ilox.RuntimeError, invalid_operands!(operator)
-        :bang_equal -> left != right
-        :equal_equal -> left == right
+    types =
+      cond do
+        is_number(left) && is_number(right) -> :number
+        is_binary(left) && is_binary(right) -> :binary
+        true -> nil
       end
 
-    {env, value}
+    {env, eval_operator(operator, left, right, types)}
   end
+
+  # Comparison operators *must* be restricted to numbers, because all values in the BEAM
+  # are comparables.
+  defp eval_operator(%Token{type: :minus}, left, right, :number), do: left - right
+  defp eval_operator(%Token{type: :slash}, left, right, :number), do: left / right
+  defp eval_operator(%Token{type: :star}, left, right, :number), do: left * right
+  defp eval_operator(%Token{type: :plus}, left, right, :number), do: left + right
+  defp eval_operator(%Token{type: :plus}, left, right, :binary), do: left <> right
+  defp eval_operator(%Token{type: :greater}, left, right, :number), do: left > right
+  defp eval_operator(%Token{type: :greater_equal}, left, right, :number), do: left >= right
+  defp eval_operator(%Token{type: :less}, left, right, :number), do: left < right
+  defp eval_operator(%Token{type: :less_equal}, left, right, :number), do: left <= right
+  defp eval_operator(%Token{type: :bang_equal}, left, right, _), do: left != right
+  defp eval_operator(%Token{type: :equal_equal}, left, right, _), do: left == right
+
+  # interpreter test: :minus, :slash, :star, :greater, :greater_equal, :less, and
+  # :less_equal must raise errors on non-number in either left or right. :plus must raise
+  # errors when both operands aren't both numbers or both strings.
+  defp eval_operator(operator, _left, _right, nil),
+    do: raise(Ilox.RuntimeError, invalid_operands!(operator))
 
   defp eval(env, {:var_expr, name}), do: Env.get(env, name)
 

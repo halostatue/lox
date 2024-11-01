@@ -1,4 +1,6 @@
 defmodule Ilox.Errors do
+  @moduledoc false
+
   def format(%{token: %{line: line}, message: message, where: nil}),
     do: format(line, message, nil)
 

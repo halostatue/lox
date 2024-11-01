@@ -1,68 +1,91 @@
 defmodule Ilox.Token do
   @moduledoc """
-  Scanning token types
+  ilox scanner tokens, used for parsing later.
   """
 
-  @type lx_standalone ::
-          :left_paren
-          | :right_paren
-          | :left_brace
-          | :right_brace
-          | :comma
-          | :dot
-          | :minus
-          | :plus
-          | :semicolon
-          | :slash
-          | :star
+  use TypeCheck
 
-  @type lx_compound ::
-          :bang
-          | :bang_equal
-          | :equal
-          | :equal_equal
-          | :greater
-          | :greater_equal
-          | :less
-          | :less_equal
+  @type! lox_standalone ::
+           :left_paren
+           | :right_paren
+           | :left_brace
+           | :right_brace
+           | :comma
+           | :dot
+           | :minus
+           | :plus
+           | :semicolon
+           | :slash
+           | :star
 
-  @type lx_literal :: :identifier | :string | :number
+  @type! lox_compound ::
+           :bang
+           | :bang_equal
+           | :equal
+           | :equal_equal
+           | :greater
+           | :greater_equal
+           | :less
+           | :less_equal
 
-  @type lx_keyword ::
-          :and
-          | :class
-          | :else
-          | :Qfalse
-          | :fun
-          | :for
-          | :if
-          | :Qnil
-          | :or
-          | :print
-          | :return
-          | :super
-          | :this
-          | :Qtrue
-          | :var
-          | :while
+  @type! lox_literal :: :identifier | :string | :number
 
-  @type lx_terminal :: :eof
+  @type! lox_keyword ::
+           :and
+           | :class
+           | :else
+           | :Qfalse
+           | :fun
+           | :for
+           | :if
+           | :Qnil
+           | :or
+           | :print
+           | :return
+           | :super
+           | :this
+           | :Qtrue
+           | :var
+           | :while
 
-  @type t :: %__MODULE__{
-          type: lx_standalone | lx_compound | lx_literal | lx_keyword | lx_terminal,
-          lexeme: binary(),
-          literal: term(),
-          line: pos_integer()
-        }
+  @type! lox_terminal :: :eof
 
-  @derive [Inspect]
+  @type! lox_tokens ::
+           lox_standalone() | lox_compound() | lox_literal() | lox_keyword() | lox_terminal()
 
+  @enforce_keys [:type, :lexeme, :line]
   defstruct [:type, :lexeme, :literal, :line]
 
-  def new(type, lexeme, literal, line),
-    do: %__MODULE__{type: type, lexeme: lexeme, literal: literal, line: line}
+  @type! t :: %__MODULE__{
+           type: lox_tokens(),
+           line: non_neg_integer(),
+           lexeme: binary(),
+           literal: term()
+         }
 
-  def eof(line \\ 0), do: new(:eof, "", nil, line)
+  @spec! new(
+           type :: lox_tokens(),
+           line :: non_neg_integer(),
+           lexeme :: binary(),
+           literal :: term()
+         ) :: t()
+  def new(type, line, lexeme, literal \\ nil),
+    do: %__MODULE__{lexeme: lexeme, line: line, literal: literal, type: type}
+
+  def eof(line \\ 0), do: new(:eof, line, "")
+
+  defimpl Inspect do
+    def inspect(%{type: :eof, line: line}, _opts) do
+      "Token.eof(#{line})"
+    end
+
+    def inspect(token, _opts) do
+      params =
+        Enum.map_join([:type, :line, :lexeme, :literal], ", ", &inspect(Map.get(token, &1)))
+
+      "Token.new(#{params})"
+    end
+  end
 
   def to_string(%__MODULE__{type: type, lexeme: lexeme, literal: literal, line: line}) do
     "#{line}: #{type} \"#{lexeme}\" #{literal}"

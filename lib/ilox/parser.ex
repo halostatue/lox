@@ -170,10 +170,8 @@ defmodule Ilox.Parser do
     if type_match(current, types) do
       {operator, tokens} = advance(tokens)
 
-      case consumer.(tokens) |> dbg() do
+      case consumer.(tokens) do
         {nil, []} ->
-          IO.inspect(error_where(current))
-
           raise Ilox.ParserError,
             token: current,
             message: "Expect right-hand expression.",

@@ -6,7 +6,6 @@ defmodule Ilox do
   [3]: https://craftinginterpreters.com/a-tree-walk-interpreter.html
   """
 
-  alias Ilox.AstPrinter
   alias Ilox.Context
   alias Ilox.Interpreter
   alias Ilox.Parser
@@ -112,14 +111,6 @@ defmodule Ilox do
   def parse(tokenable) do
     with {:ok, tokens} <- scan(tokenable) do
       parse(tokens)
-    end
-  end
-
-  def print_ast(expr) when is_tuple(expr), do: AstPrinter.print(expr)
-
-  def print_ast(astable) do
-    with {:ok, expr} <- parse(astable) do
-      print_ast(expr)
     end
   end
 

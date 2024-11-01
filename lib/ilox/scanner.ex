@@ -28,7 +28,7 @@ defmodule Ilox.Scanner do
     do: %{context | errors: [Errors.format(context, message) | context.errors]}
 
   defp add_token(context, type, literal \\ nil) do
-    token = Token.new(type, context.current, literal, context.line)
+    token = Token.new(type, context.line, context.current, literal)
 
     %{context | current: "", tokens: [token | context.tokens]}
   end
@@ -74,36 +74,42 @@ defmodule Ilox.Scanner do
   end
 
   defp scan_next_token(%{rest: source} = context) do
-    {c, rest} = String.next_codepoint(source)
-    context = %{context | current: context.current <> c, rest: rest}
+    {codepoint, rest} = String.next_codepoint(source)
+    context = %{context | current: context.current <> codepoint, rest: rest}
 
-    context =
-      case c do
-        "(" -> add_token(context, :left_paren)
-        ")" -> add_token(context, :right_paren)
-        "{" -> add_token(context, :left_brace)
-        "}" -> add_token(context, :right_brace)
-        "," -> add_token(context, :comma)
-        "." -> add_token(context, :dot)
-        "-" -> add_token(context, :minus)
-        "+" -> add_token(context, :plus)
-        ";" -> add_token(context, :semicolon)
-        "*" -> add_token(context, :star)
-        "!" -> add_compound_token(context, "=", :bang_equal, :bang)
-        "=" -> add_compound_token(context, "=", :equal_equal, :equal)
-        "<" -> add_compound_token(context, "=", :less_equal, :less)
-        ">" -> add_compound_token(context, "=", :greater_equal, :greater)
-        "/" -> handle_slash(context)
-        "\"" -> handle_string(context)
-        "\n" -> %{context | current: "", line: context.line + 1}
-        c when is_whitespace(c) -> %{context | current: ""}
-        c when is_digit(c) -> handle_number(%{context | current: c})
-        c when is_alpha(c) -> handle_identifier(%{context | current: c})
-        invalid -> error(context, "Unexpected character (`#{invalid}`).")
-      end
-
-    scan_next_token(context)
+    codepoint
+    |> process_codepoint(context)
+    |> scan_next_token()
   end
+
+  defp process_codepoint("(", context), do: add_token(context, :left_paren)
+  defp process_codepoint(")", context), do: add_token(context, :right_paren)
+  defp process_codepoint("{", context), do: add_token(context, :left_brace)
+  defp process_codepoint("}", context), do: add_token(context, :right_brace)
+  defp process_codepoint(",", context), do: add_token(context, :comma)
+  defp process_codepoint(".", context), do: add_token(context, :dot)
+  defp process_codepoint("-", context), do: add_token(context, :minus)
+  defp process_codepoint("+", context), do: add_token(context, :plus)
+  defp process_codepoint(";", context), do: add_token(context, :semicolon)
+  defp process_codepoint("*", context), do: add_token(context, :star)
+  defp process_codepoint("!", context), do: add_compound_token(context, "=", :bang_equal, :bang)
+  defp process_codepoint("=", context), do: add_compound_token(context, "=", :equal_equal, :equal)
+  defp process_codepoint("<", context), do: add_compound_token(context, "=", :less_equal, :less)
+
+  defp process_codepoint(">", context),
+    do: add_compound_token(context, "=", :greater_equal, :greater)
+
+  defp process_codepoint("/", context), do: handle_slash(context)
+  defp process_codepoint("\"", context), do: handle_string(context)
+  defp process_codepoint("\n", context), do: %{context | current: "", line: context.line + 1}
+  defp process_codepoint(c, context) when is_whitespace(c), do: %{context | current: ""}
+  defp process_codepoint(c, context) when is_digit(c), do: handle_number(%{context | current: c})
+
+  defp process_codepoint(c, context) when is_alpha(c),
+    do: handle_identifier(%{context | current: c})
+
+  defp process_codepoint(invalid, context),
+    do: error(context, "Unexpected character (`#{invalid}`).")
 
   @keywords %{
     "and" => :and,
