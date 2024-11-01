@@ -69,7 +69,7 @@ defmodule Ilox.Scanner do
   defguardp is_whitespace(c) when c in ["\r", "\s", "\t"]
 
   defp scan_next_token(%{rest: ""} = context) do
-    tokens = [Token.new(:eof, "", nil, context.line) | context.tokens]
+    tokens = [Token.eof(context.line) | context.tokens]
     %{context | tokens: Enum.reverse(tokens)}
   end
 

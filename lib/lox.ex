@@ -23,7 +23,7 @@ defmodule Lox do
   Variables may store values of any type, and may change their stored data type at any
   time. Performing operations on values of the wrong type will result in runtime errors.
 
-  ### Automatic Memory Managment (3.2.2)
+  ### Automatic Memory Management (3.2.2)
 
   Lox has a simple garbage collector (this may be skipped on the Elixir versions as there
   is no direct way to manage memory).
@@ -78,7 +78,7 @@ defmodule Lox do
   123 == "123";           // false
   ```
 
-  Relative comparisons may only be peformed between number values.
+  Relative comparisons may only be performed between number values.
 
   ```
   less < than;
@@ -143,8 +143,9 @@ defmodule Lox do
 
   There are three constructs for control flow:
 
-  - `if/else`: The `else` branch is optional, and both branch bodies must be blocks. There
-    is no support for `else if`, so a nested `if` will be inside the `else` blcok.
+  - `if/else`: The `else` branch is optional, and both branch bodies may be single
+    statements or blocks. There is no support for `else if`, so a nested `if` will be
+    inside the `else` block. Declarations in a branch must be inside of a block.
 
     ```
     if (expr) {
@@ -167,7 +168,8 @@ defmodule Lox do
     ```
 
   - `for`: The C `for` loop with initializer statement, comparison expression, and next
-    statement. The body must be a block.
+    statement. A single statement or block must follow the `for` loop conditions.
+    Declarations in the loop must be inside of a block.
 
     ```
     for (var a = 1; a < 10; a = a + 1) {

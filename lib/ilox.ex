@@ -13,18 +13,82 @@ defmodule Ilox do
   alias Ilox.Scanner
   alias Ilox.Token
 
-  # Expressions
-  @type expr :: literal_expr | unary_expr | binary_expr | group_expr
-  @type binary_expr :: {:binary_expr, left :: expr, operator :: Token.t(), right :: expr}
+  @typedoc section: :cfgrammar
+  @typedoc """
+  Any expression that evaluates to a value.
+
+  `expr` → `t:literal_expr/0` | `t:unary_expr/0` | `t:binary_expr/0` | `t:group_expr/0`
+  | `t:var_expr/0`
+  """
+  @type expr :: binary_expr | group_expr | literal_expr | unary_expr | var_expr | assign_expr
+
+  @typedoc section: :cfgrammar
+  @typedoc """
+  Two `t:expr/0` joined by a `t:binary_operator/0`.
+
+  `binary_expr` → `t:expr/0` `t:binary_operator/0` `t:expr/0` ;
+  """
+  @type binary_expr :: {:binary_expr, left :: expr, operator :: binary_operator, right :: expr}
+
+  @typedoc section: :cfgrammar
+  @typedoc """
+  A `t:Token.t/0` constrained to the subset of binary operators.
+
+  `binary_operator` → "==" | "!=" | "<" | "<=" | ">" | ">=" | "+"  | "-"  | "*" | "/" ;
+  """
+  @type binary_operator :: Token.t()
+
+  @typedoc section: :cfgrammar
+  @typedoc """
+  A literal value, consisting of `nil`, `true`, `false`, any floating point number, any
+  integer, or any UTF-8 string.
+
+  `literal_expr` → `NUMBER` | `STRING` | "true" | "false" | "nil" ;
+  """
   @type literal_expr :: {:literal_expr, value :: number() | binary() | true | false | nil}
-  @type unary_expr :: {:unary_expr, operator :: Token.t(), right :: expr}
+
+  @typedoc section: :cfgrammar
+  @typedoc """
+  A `t:unary_operator/0` followed by an `t:expr/0`.
+
+  `unary_expr` → `t:unary_operator/0` `t:expr/0` ;
+  """
+  @type unary_expr :: {:unary_expr, operator :: unary_operator, right :: expr}
+
+  @typedoc section: :cfgrammar
+  @typedoc """
+  A `t:Token.t/0` constrained to numeric negation (`-`) and boolean negation (`!`)
+  operators.
+
+  `unary_operator` → "-" | "!" ;
+  """
+  @type unary_operator :: Token.t()
+
+  @typedoc section: :cfgrammar
+  @typedoc """
+  An `t:expr/0` surrounded by parentheses.
+
+  `group_expr` → "(" `t:expr/0` ")" ;
+  """
   @type group_expr :: {:group_expr, expr :: expr}
 
-  # Statements
-  @type stmt :: expr_stmt | print_stmt
-  @type expr_stmt :: {:expr_stmt, expr :: expr}
-  @type print_stmt :: {:print_stmt, expr :: expr}
+  @typedoc section: :cfgrammar
+  @typedoc """
+  A named reference to a variable.
 
+  `variable` → IDENTIFIER ;
+  """
+  @type var_expr :: {:var_expr, identifier :: Token.t()}
+
+  @typedoc section: :cfgrammar
+  @typedoc """
+  Variable assignment.
+
+  `assignment` → IDENTIFIER "=" assignment | equality ;
+  """
+  @type assign_expr :: {:assign_expr, identifier :: Token.t(), value :: expr}
+
+  @doc false
   defdelegate add_error(message), to: Context
 
   def run, do: run([])
