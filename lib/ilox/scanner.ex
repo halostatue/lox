@@ -190,7 +190,6 @@ defmodule Ilox.Scanner do
         handle_string(%{
           context
           | current: current <> "\n",
-            line: context.line + 1,
             literal: literal <> "\n",
             rest: rest
         })
@@ -201,7 +200,7 @@ defmodule Ilox.Scanner do
   end
 
   defp consume_comment(""), do: ""
-  defp consume_comment("\n"), do: ""
-  defp consume_comment("\n" <> rest), do: rest
+  defp consume_comment("\n"), do: "\n"
+  defp consume_comment("\n" <> rest), do: "\n" <> rest
   defp consume_comment(<<_c::utf8, rest::binary>>), do: consume_comment(rest)
 end
