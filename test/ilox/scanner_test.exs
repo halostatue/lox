@@ -62,7 +62,7 @@ defmodule Ilox.ScannerTest do
 
         assert {:ok,
                 [
-                  %Token{type: :number, line: 1, lexeme: "", literal: ^literal},
+                  %Token{type: :number, line: 1, lexeme: unquote(input), literal: ^literal},
                   %Token{type: :eof}
                 ]} =
                  Scanner.scan_tokens(unquote(input))
