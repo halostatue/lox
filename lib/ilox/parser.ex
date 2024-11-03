@@ -1,3 +1,8 @@
+defmodule Ilox.ParserError do
+  defexception [:token, :message, :ctx, where: nil]
+  defdelegate message(e), to: Ilox.Errors, as: :format
+end
+
 defmodule Ilox.Parser do
   @moduledoc """
   The parser adapts the `m:Ilox#context-free-grammar` into one that encodes its precedence
@@ -75,14 +80,9 @@ defmodule Ilox.Parser do
     end
   end
 
-  def parse(tokens) do
-    parse_declarations(tokens)
-  rescue
-    e in Ilox.ParserError ->
-      {:error, :parser, Exception.message(e)}
-  end
+  def parse(tokens) when is_list(tokens), do: handle_program(tokens)
 
-  @spec parse(tokens :: binary | list(Token.t())) :: Ilox.expr()
+  @spec parse_expr(tokens :: binary | list(Token.t())) :: Ilox.expr()
   def parse_expr(source) when is_binary(source) do
     case Scanner.scan_tokens(source) do
       {:ok, tokens} -> parse_expr(tokens)
@@ -91,205 +91,246 @@ defmodule Ilox.Parser do
   end
 
   def parse_expr(tokens) do
-    {expr, _tokens} = parse_expression(tokens)
+    {expr, _tokens} = handle_expression(%{tokens: tokens})
     {:ok, expr}
   rescue
     e in Ilox.ParserError ->
       {:error, :parser, Exception.message(e)}
   end
 
-  defp parse_declarations([]), do: parse_declarations([Token.eof()])
+  defp handle_program(tokens) when is_list(tokens) do
+    case handle_program(%{errors: [], statements: [], tokens: tokens}) do
+      %{errors: [], statements: []} ->
+        raise "This should be unreachable. No errors and no statements returned."
 
-  defp parse_declarations([%Token{type: :eof} = token | rest]) do
-    raise Ilox.ParserError, token: token, message: "Expect expression.", rest: rest
-  end
+      %{errors: [_ | _] = errors} ->
+        {:error, :parser, Enum.reverse(errors)}
 
-  defp parse_declarations(tokens) do
-    {statements, _tokens} = parse_declaration([], tokens)
-    {:ok, Enum.reverse(statements)}
-  end
-
-  defp parse_declaration(statements, []), do: {statements, []}
-
-  defp parse_declaration(statements, [%Token{type: :eof} | _]), do: {statements, []}
-
-  defp parse_declaration(statements, [current | rest] = tokens) do
-    if type_match(current, :var) do
-      var_declaration(statements, rest)
-    else
-      parse_statement(statements, tokens)
+      %{statements: [_ | _] = statements} ->
+        {:ok, Enum.reverse(statements)}
     end
   rescue
     e in Ilox.ParserError ->
-      # This should not be happening *here*.
-      IO.puts(:stderr, Exception.message(e))
-      parse_declaration(statements, synchronize(e.rest))
+      {:error, :parser, [Exception.message(e)]}
   end
 
-  defp var_declaration(statements, tokens) do
-    {name, [next | _] = tokens} = consume(tokens, :identifier, "Expect variable name.")
+  defp handle_program(%{tokens: []} = ctx),
+    do: handle_program(%{ctx | tokens: [Token.eof()]})
 
-    {initializer, tokens} =
+  defp handle_program(%{tokens: [%Token{type: :eof} = token | _]} = ctx) do
+    raise Ilox.ParserError, token: token, message: "Expect expression.", ctx: ctx
+  end
+
+  defp handle_program(%{} = ctx), do: handle_declaration(ctx)
+
+  defp handle_declaration(%{tokens: []} = ctx), do: ctx
+
+  defp handle_declaration(%{tokens: [%Token{type: :eof} | _]} = ctx), do: ctx
+
+  defp handle_declaration(%{tokens: [current | tokens]} = ctx) do
+    if type_match(current, :var) do
+      handle_var_declaration(%{ctx | tokens: tokens})
+    else
+      handle_statement(ctx)
+    end
+  rescue
+    e in Ilox.ParserError ->
+      %{e.ctx | errors: [Exception.message(e) | e.ctx.errors]}
+      |> synchronize()
+      |> handle_declaration()
+  end
+
+  defp handle_var_declaration(ctx) do
+    {name, %{tokens: [next | tokens]} = ctx} = expect(ctx, :identifier, "Expect variable name.")
+
+    {initializer, ctx} =
       if type_match(next, :equal) do
-        parse_expression(tokens)
+        handle_expression(%{ctx | tokens: tokens})
       else
-        {nil, tokens}
+        {nil, ctx}
       end
 
-    {_, tokens} = consume(tokens, :semicolon, "Expect ';' after variable declaration.")
-    parse_statement({:var_decl, name, initializer}, statements, tokens)
+    {_, ctx} = expect_semicolon(ctx, "variable declaration")
+    add_statement(ctx, {:var_decl, name, initializer})
   end
 
-  defp parse_statement(statements, [%Token{type: :eof}]), do: {statements, []}
-  defp parse_statement(statements, []), do: {statements, []}
+  defp handle_statement(%{tokens: []} = ctx), do: ctx
+  defp handle_statement(%{tokens: [%Token{type: :eof} | _]} = ctx), do: ctx
 
-  defp parse_statement(statements, [%Token{type: :print} | tokens]) do
-    {expr, tokens} = parse_expression(tokens)
-    {_, tokens} = consume(tokens, :semicolon, "Expect ';' after value.")
-    parse_statement({:print_stmt, expr}, statements, tokens)
+  defp handle_statement(%{tokens: [%Token{type: :print} | tokens]} = ctx) do
+    {expr, ctx} = handle_expression(%{ctx | tokens: tokens})
+    {_, ctx} = expect_semicolon(ctx, "value")
+    add_statement(ctx, {:print_stmt, expr})
   end
 
-  defp parse_statement(statements, tokens) do
-    {expr, tokens} = parse_expression(tokens)
-    {_, tokens} = consume(tokens, :semicolon, "Expect ';' after expression.")
-    parse_statement({:expr_stmt, expr}, statements, tokens)
+  defp handle_statement(ctx) do
+    {expr, ctx} = handle_expression(ctx)
+    {_, ctx} = expect_semicolon(ctx, "expression")
+    add_statement(ctx, {:expr_stmt, expr})
   end
 
-  defp parse_statement(stmt, statements, tokens), do: parse_statement([stmt | statements], tokens)
+  defp handle_expression(%{tokens: []} = ctx),
+    do: handle_expression(%{ctx | tokens: [Token.eof()]})
 
-  defp parse_expression([]), do: parse_expression([Token.eof()])
-
-  defp parse_expression([%Token{type: :eof} = token | rest]) do
-    raise Ilox.ParserError, token: token, message: "Expect expression.", rest: rest
+  defp handle_expression(%{tokens: [%Token{type: :eof} = token | _]} = ctx) do
+    raise Ilox.ParserError, token: token, message: "Expect expression.", ctx: ctx
   end
 
-  defp parse_expression(tokens), do: assignment(tokens)
+  defp handle_expression(ctx), do: handle_assignment(ctx)
 
-  defp assignment(tokens) do
-    {expr, [head | _] = tokens} = equality(tokens)
+  defp handle_assignment(ctx) do
+    {expr, %{tokens: [head | _]} = ctx} = handle_equality(ctx)
 
     if type_match(head, :equal) do
-      {equals, tokens} = advance(tokens)
-      {value, tokens} = assignment(tokens)
+      {equals, ctx} = handle_advance(ctx)
+      {value, ctx} = handle_assignment(ctx)
 
       case expr do
         {:var_expr, name} ->
-          {{:assignment_expr, name, value}, tokens}
+          {{:assignment_expr, name, value}, ctx}
 
         _ ->
           raise Ilox.ParserError,
             token: equals,
             message: "Invalid assignment target.",
-            rest: tokens
+            ctx: ctx
       end
     else
-      {expr, tokens}
+      {expr, ctx}
     end
   end
 
-  defp binary_consume_match(expr, [], _types, _consumer), do: {expr, []}
-
-  defp binary_consume_match(expr, [current | _] = tokens, types, consumer) do
-    if type_match(current, types) do
-      {operator, tokens} = advance(tokens)
-
-      case consumer.(tokens) do
-        {nil, []} ->
-          raise Ilox.ParserError,
-            token: current,
-            message: "Expect right-hand expression.",
-            where: error_where(current)
-
-        {right, tokens} ->
-          expr = {:binary_expr, expr, operator, right}
-          binary_consume_match(expr, tokens, types, consumer)
-      end
-    else
-      {expr, tokens}
-    end
+  defp handle_equality(ctx) do
+    {expr, ctx} = handle_comparison(ctx)
+    handle_binary_match(ctx, expr, [:bang_equal, :equal_equal], &handle_comparison/1)
   end
 
-  defp equality(tokens) do
-    {expr, tokens} = comparison(tokens)
-    binary_consume_match(expr, tokens, [:bang_equal, :equal_equal], &comparison/1)
+  defp handle_comparison(ctx) do
+    {expr, ctx} = handle_term(ctx)
+
+    handle_binary_match(
+      ctx,
+      expr,
+      [:greater, :greater_equal, :less, :less_equal],
+      &handle_term/1
+    )
   end
 
-  defp comparison(tokens) do
-    {expr, tokens} = term(tokens)
-    binary_consume_match(expr, tokens, [:greater, :greater_equal, :less, :less_equal], &term/1)
+  defp handle_term(ctx) do
+    {expr, ctx} = handle_factor(ctx)
+    handle_binary_match(ctx, expr, [:minus, :plus], &handle_factor/1)
   end
 
-  defp term(tokens) do
-    result = factor(tokens)
-    {expr, tokens} = result
-    binary_consume_match(expr, tokens, [:minus, :plus], &factor/1)
+  defp handle_factor(ctx) do
+    {expr, ctx} = handle_unary(ctx)
+    handle_binary_match(ctx, expr, [:slash, :star], &handle_unary/1)
   end
 
-  defp factor(tokens) do
-    {expr, tokens} = unary(tokens)
-    binary_consume_match(expr, tokens, [:slash, :star], &unary/1)
-  end
+  defp handle_unary(%{tokens: []} = ctx), do: {nil, ctx}
+  defp handle_unary(%{tokens: [%Token{type: :eof} | _]} = ctx), do: {nil, ctx}
 
-  defp unary([]), do: {nil, []}
-
-  defp unary([current | _] = tokens) do
+  defp handle_unary(%{tokens: [current | _]} = ctx) do
     if type_match(current, [:bang, :minus]) do
-      {operator, tokens} = advance(tokens)
+      {operator, ctx} = handle_advance(ctx)
 
-      case(unary(tokens)) do
-        {nil, []} ->
+      case handle_unary(ctx) do
+        {nil, ctx} ->
           raise Ilox.ParserError,
             token: current,
             message: "Expect right-hand expression.",
-            where: error_where(current)
+            where: error_where(current),
+            ctx: ctx
 
-        {right, tokens} ->
-          {{:unary_expr, operator, right}, tokens}
+        {right, ctx} ->
+          {{:unary_expr, operator, right}, ctx}
       end
     else
-      primary(tokens)
+      handle_primary(ctx)
     end
   end
 
-  defp primary([]), do: {nil, []}
-  defp primary([%Token{type: :eof} | _]), do: {nil, []}
-  defp primary([%Token{type: :Qfalse} | tokens]), do: {{:literal_expr, false}, tokens}
-  defp primary([%Token{type: :Qnil} | tokens]), do: {{:literal_expr, nil}, tokens}
-  defp primary([%Token{type: :Qtrue} | tokens]), do: {{:literal_expr, true}, tokens}
+  defp handle_primary(%{tokens: []} = ctx), do: {nil, ctx}
+  defp handle_primary(%{tokens: [%Token{type: :eof} | _]} = ctx), do: {nil, ctx}
 
-  defp primary([%Token{type: type} = current | tokens]) when type in [:number, :string],
-    do: {{:literal_expr, current}, tokens}
+  defp handle_primary(%{tokens: [%Token{type: :Qfalse} | tokens]} = ctx),
+    do: {{:literal_expr, false}, %{ctx | tokens: tokens}}
 
-  defp primary([%Token{type: :identifier} = current | tokens]), do: {{:var_expr, current}, tokens}
+  defp handle_primary(%{tokens: [%Token{type: :Qnil} | tokens]} = ctx),
+    do: {{:literal_expr, nil}, %{ctx | tokens: tokens}}
 
-  defp primary([%Token{type: :left_paren} | tokens]) do
-    {expr, tokens} = parse_expression(tokens)
-    {_, tokens} = consume(tokens, :right_paren, "Expect ')' after expression.")
-    {{:group_expr, expr}, tokens}
+  defp handle_primary(%{tokens: [%Token{type: :Qtrue} | tokens]} = ctx),
+    do: {{:literal_expr, true}, %{ctx | tokens: tokens}}
+
+  defp handle_primary(%{tokens: [%Token{type: type} = current | tokens]} = ctx)
+       when type in [:number, :string],
+       do: {{:literal_expr, current}, %{ctx | tokens: tokens}}
+
+  defp handle_primary(%{tokens: [%Token{type: :identifier} = current | tokens]} = ctx),
+    do: {{:var_expr, current}, %{ctx | tokens: tokens}}
+
+  defp handle_primary(%{tokens: [%Token{type: :left_paren} | tokens]} = ctx) do
+    {expr, ctx} = handle_expression(%{ctx | tokens: tokens})
+    {_, ctx} = expect(ctx, :right_paren, "Expect ')' after expression.")
+    {{:group_expr, expr}, ctx}
   end
 
-  defp primary([current | rest]) do
-    raise Ilox.ParserError, token: current, message: "Expect expression.", rest: rest
+  defp handle_primary(%{tokens: [current | _]} = ctx) do
+    raise Ilox.ParserError, token: current, message: "Expect expression.", ctx: ctx
   end
 
-  defp consume([%Token{type: type} = current | tokens], type, _message),
-    do: {current, tokens}
+  defp expect_semicolon(ctx, clause), do: expect(ctx, :semicolon, "Expect ';' after #{clause}.")
 
-  defp consume([token | rest], _type, message) do
-    raise Ilox.ParserError, token: token, message: message, where: error_where(token), rest: rest
+  defp expect(%{tokens: [%Token{type: type} = current | tokens]} = ctx, type, _message),
+    do: {current, %{ctx | tokens: tokens}}
+
+  defp expect(%{tokens: [token | _]} = ctx, _type, message) do
+    raise Ilox.ParserError,
+      token: token,
+      message: message,
+      where: error_where(token),
+      ctx: ctx
   end
 
-  defp synchronize(tokens) do
-    case advance(tokens) do
-      {nil, []} ->
-        []
+  defp handle_binary_match(%{tokens: []} = ctx, expr, _types, _consumer), do: {expr, ctx}
 
-      {previous, [current | _] = tokens} ->
+  defp handle_binary_match(%{tokens: [%Token{type: :eof} | _]} = ctx, expr, _types, _consumer),
+    do: {expr, ctx}
+
+  defp handle_binary_match(%{tokens: [current | _]} = ctx, expr, types, consumer) do
+    if type_match(current, types) do
+      {operator, ctx} = handle_advance(ctx)
+
+      case consumer.(ctx) do
+        {nil, ctx} ->
+          raise Ilox.ParserError,
+            token: current,
+            message: "Expect right-hand expression.",
+            where: error_where(current),
+            ctx: ctx
+
+        {right, ctx} ->
+          expr = {:binary_expr, expr, operator, right}
+          handle_binary_match(ctx, expr, types, consumer)
+      end
+    else
+      {expr, ctx}
+    end
+  end
+
+  defp add_statement(ctx, statement),
+    do: handle_statement(%{ctx | statements: [statement | ctx.statements]})
+
+  defp synchronize(ctx) do
+    case handle_advance(ctx) do
+      {nil, ctx} ->
+        ctx
+
+      {previous, %{tokens: [current | _]} = ctx} ->
         cond do
-          current.type == :eof -> tokens
-          previous.type == :semicolon -> tokens
-          current.type in [:class, :fun, :var, :for, :if, :while, :print, :return] -> tokens
-          true -> synchronize(tokens)
+          current.type == :eof -> ctx
+          previous.type == :semicolon -> ctx
+          current.type in [:class, :fun, :var, :for, :if, :while, :print, :return] -> ctx
+          true -> synchronize(ctx)
         end
     end
   end
@@ -302,8 +343,13 @@ defmodule Ilox.Parser do
   defp type_match(%Token{type: type}, type), do: true
   defp type_match(%Token{}, _type), do: false
 
-  defp advance([]), do: {nil, []}
-  defp advance([%Token{} = previous, %Token{type: :eof} | _]), do: {previous, []}
-  defp advance([%Token{type: :eof} | _]), do: {nil, []}
-  defp advance([%Token{} = previous | rest]), do: {previous, rest}
+  defp handle_advance(%{tokens: []} = ctx), do: {nil, ctx}
+
+  defp handle_advance(%{tokens: [%Token{} = previous, %Token{type: :eof} | _]} = ctx),
+    do: {previous, %{ctx | tokens: [Token.eof(previous.line)]}}
+
+  defp handle_advance(%{tokens: [%Token{type: :eof} | _]} = ctx), do: {nil, ctx}
+
+  defp handle_advance(%{tokens: [%Token{} = previous | tokens]} = ctx),
+    do: {previous, %{ctx | tokens: tokens}}
 end

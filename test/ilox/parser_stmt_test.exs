@@ -236,7 +236,7 @@ defmodule Ilox.ParserStmtTest do
           {"/", :slash},
           {"*", :star}
         ] do
-      test "left #{operator} right -> {:binary_expr, left, #{token}, right}" do
+      test "left #{operator} right;" do
         assert {:ok,
                 [
                   {:expr_stmt,
@@ -247,7 +247,7 @@ defmodule Ilox.ParserStmtTest do
                  Parser.parse("left #{unquote(operator)} right;")
       end
 
-      test "nil #{operator} number -> {:binary_expr, {:literal, nil}, #{token}, {:literal, number}}" do
+      test "nil #{operator} number;" do
         assert {:ok,
                 [
                   {:expr_stmt,
@@ -256,6 +256,42 @@ defmodule Ilox.ParserStmtTest do
                 ]} =
                  Parser.parse("nil #{unquote(operator)} 5;")
       end
+    end
+  end
+
+  describe "parse/1: assignment statements" do
+    test "left = right;" do
+      assert {:ok,
+              [
+                {:expr_stmt,
+                 {:assignment_expr, %Token{type: :identifier, lexeme: "left"},
+                  {:var_expr, %Token{type: :identifier, lexeme: "right"}}}}
+              ]} = Parser.parse("left = right;")
+    end
+
+    test "nil = right; errors on assignment target" do
+      assert {:error, :parser, ["[line 1] Error: Invalid assignment target."]} =
+               Parser.parse("nil = right;")
+    end
+  end
+
+  describe "parse/1: variable declaration and initialization" do
+    test "var left = right;" do
+      assert {:ok,
+              [
+                {:var_decl, %Token{type: :identifier, lexeme: "left"},
+                 {:var_expr, %Token{type: :identifier, lexeme: "right"}}}
+              ]} = Parser.parse("var left = right;")
+    end
+
+    test "var left;" do
+      assert {:ok, [{:var_decl, %Token{type: :identifier, lexeme: "left"}, nil}]} =
+               Parser.parse("var left;")
+    end
+
+    test "var; errors on missing identifier" do
+      assert {:error, :parser, ["[line 1] Error at ';': Expect variable name."]} =
+               Parser.parse("var;")
     end
   end
 end
