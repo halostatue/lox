@@ -36,9 +36,9 @@ defmodule Lox.MixProject do
   defp deps do
     [
       {:type_check, "~> 0.13.3"},
-      {:credo, ">= 0.0.0", only: :dev},
+      {:credo, "~> 1.5", only: :dev},
       {:ex_doc, "~> 0.34.0", only: :dev},
-      {:stream_data, "~> 0.5.0", only: :test}
+      {:stream_data, "~> 1.0", only: :test}
     ]
   end
 end

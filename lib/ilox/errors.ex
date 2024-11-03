@@ -22,6 +22,6 @@ defmodule Ilox.RuntimeError do
 end
 
 defmodule Ilox.ParserError do
-  defexception [:token, :message, where: nil]
+  defexception [:token, :message, rest: [], where: nil]
   defdelegate message(e), to: Ilox.Errors, as: :format
 end

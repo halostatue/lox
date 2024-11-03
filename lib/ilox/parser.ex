@@ -1,7 +1,7 @@
 defmodule Ilox.Parser do
   @moduledoc """
   The parser adapts the `m:Ilox#context-free-grammar` into one that encodes its precedence
-  rules. However, the parser produces an AST that is a mix of the context free grammar for
+  rules. The parser produces an AST that is a mix of the context free grammar for
   expressions and the parsing grammar for statements.
 
   #### Parsing Grammar
@@ -24,9 +24,9 @@ defmodule Ilox.Parser do
   statement   →  expr_stmt | print_stmt ;
   var_decl    →  "var" IDENTIFIER ( "=" expression )? ";" ;
   ```
-
   """
 
+  alias Ilox.Scanner
   alias Ilox.Token
 
   @typedoc section: :pgrammar
@@ -67,7 +67,14 @@ defmodule Ilox.Parser do
   """
   @type print_stmt :: {:print_stmt, expr :: Ilox.expr()}
 
-  @spec parse(tokens :: list(Token.t())) :: list(program)
+  @spec parse(tokens :: binary | list(Token.t())) :: list(program)
+  def parse(source) when is_binary(source) do
+    case Scanner.scan_tokens(source) do
+      {:ok, tokens} -> parse(tokens)
+      {:error, :scanner, errors} -> {:error, :scanner, errors}
+    end
+  end
+
   def parse(tokens) do
     parse_declarations(tokens)
   rescue
@@ -75,7 +82,14 @@ defmodule Ilox.Parser do
       {:error, :parser, Exception.message(e)}
   end
 
-  @spec parse(tokens :: list(Token.t())) :: Ilox.expr()
+  @spec parse(tokens :: binary | list(Token.t())) :: Ilox.expr()
+  def parse_expr(source) when is_binary(source) do
+    case Scanner.scan_tokens(source) do
+      {:ok, tokens} -> parse_expr(tokens)
+      {:error, :scanner, errors} -> {:error, :scanner, errors}
+    end
+  end
+
   def parse_expr(tokens) do
     {expr, _tokens} = parse_expression(tokens)
     {:ok, expr}
@@ -86,8 +100,8 @@ defmodule Ilox.Parser do
 
   defp parse_declarations([]), do: parse_declarations([Token.eof()])
 
-  defp parse_declarations([%Token{type: :eof} = token | _]) do
-    raise Ilox.ParserError, token: token, message: "Expect expression."
+  defp parse_declarations([%Token{type: :eof} = token | rest]) do
+    raise Ilox.ParserError, token: token, message: "Expect expression.", rest: rest
   end
 
   defp parse_declarations(tokens) do
@@ -109,7 +123,7 @@ defmodule Ilox.Parser do
     e in Ilox.ParserError ->
       # This should not be happening *here*.
       IO.puts(:stderr, Exception.message(e))
-      parse_declaration(statements, synchronize(rest))
+      parse_declaration(statements, synchronize(e.rest))
   end
 
   defp var_declaration(statements, tokens) do
@@ -125,6 +139,9 @@ defmodule Ilox.Parser do
     {_, tokens} = consume(tokens, :semicolon, "Expect ';' after variable declaration.")
     parse_statement({:var_decl, name, initializer}, statements, tokens)
   end
+
+  defp parse_statement(statements, [%Token{type: :eof}]), do: {statements, []}
+  defp parse_statement(statements, []), do: {statements, []}
 
   defp parse_statement(statements, [%Token{type: :print} | tokens]) do
     {expr, tokens} = parse_expression(tokens)
@@ -142,8 +159,8 @@ defmodule Ilox.Parser do
 
   defp parse_expression([]), do: parse_expression([Token.eof()])
 
-  defp parse_expression([%Token{type: :eof} = token | _]) do
-    raise Ilox.ParserError, token: token, message: "Expect expression."
+  defp parse_expression([%Token{type: :eof} = token | rest]) do
+    raise Ilox.ParserError, token: token, message: "Expect expression.", rest: rest
   end
 
   defp parse_expression(tokens), do: assignment(tokens)
@@ -156,8 +173,14 @@ defmodule Ilox.Parser do
       {value, tokens} = assignment(tokens)
 
       case expr do
-        {:var_expr, name} -> {{:assignment_expr, name, value}, tokens}
-        _ -> raise Ilox.ParserError, token: equals, message: "Invalid assignment target."
+        {:var_expr, name} ->
+          {{:assignment_expr, name, value}, tokens}
+
+        _ ->
+          raise Ilox.ParserError,
+            token: equals,
+            message: "Invalid assignment target.",
+            rest: tokens
       end
     else
       {expr, tokens}
@@ -245,25 +268,29 @@ defmodule Ilox.Parser do
     {{:group_expr, expr}, tokens}
   end
 
-  defp primary([current | _]) do
-    raise Ilox.ParserError, token: current, message: "Expect expression."
+  defp primary([current | rest]) do
+    raise Ilox.ParserError, token: current, message: "Expect expression.", rest: rest
   end
 
   defp consume([%Token{type: type} = current | tokens], type, _message),
     do: {current, tokens}
 
-  defp consume([token | _], _type, message) do
-    raise Ilox.ParserError, token: token, message: message, where: error_where(token)
+  defp consume([token | rest], _type, message) do
+    raise Ilox.ParserError, token: token, message: message, where: error_where(token), rest: rest
   end
 
   defp synchronize(tokens) do
-    {previous, [current | _] = tokens} = advance(tokens)
+    case advance(tokens) do
+      {nil, []} ->
+        []
 
-    cond do
-      current.type == :eof -> tokens
-      previous.type == :semicolon -> tokens
-      current.type in [:class, :fun, :var, :for, :if, :while, :print, :return] -> tokens
-      true -> synchronize(tokens)
+      {previous, [current | _] = tokens} ->
+        cond do
+          current.type == :eof -> tokens
+          previous.type == :semicolon -> tokens
+          current.type in [:class, :fun, :var, :for, :if, :while, :print, :return] -> tokens
+          true -> synchronize(tokens)
+        end
     end
   end
 
@@ -275,6 +302,7 @@ defmodule Ilox.Parser do
   defp type_match(%Token{type: type}, type), do: true
   defp type_match(%Token{}, _type), do: false
 
+  defp advance([]), do: {nil, []}
   defp advance([%Token{} = previous, %Token{type: :eof} | _]), do: {previous, []}
   defp advance([%Token{type: :eof} | _]), do: {nil, []}
   defp advance([%Token{} = previous | rest]), do: {previous, rest}

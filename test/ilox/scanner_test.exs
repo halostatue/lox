@@ -1,5 +1,6 @@
 defmodule Ilox.ScannerTest do
   use ExUnit.Case, async: true
+  use ExUnitProperties
 
   alias Ilox.Scanner
   alias Ilox.Token
@@ -55,10 +56,47 @@ defmodule Ilox.ScannerTest do
               ]} = Scanner.scan_tokens("\"hello\"")
     end
 
-    test "input '123' produces a number literal" do
-      assert {:ok,
-              [%Token{type: :number, line: 1, lexeme: "", literal: 123.0}, %Token{type: :eof}]} =
-               Scanner.scan_tokens("123")
+    for input <- ["123", "123e5", "123.5e5", "123.5e-5"] do
+      test "input '#{input}' produces a number literal" do
+        {literal, ""} = Float.parse(unquote(input))
+
+        assert {:ok,
+                [
+                  %Token{type: :number, line: 1, lexeme: "", literal: ^literal},
+                  %Token{type: :eof}
+                ]} =
+                 Scanner.scan_tokens(unquote(input))
+      end
+    end
+
+    test "input '123.3.3' produces an error" do
+      assert {:error, :scanner, ["[line 1] Error: Numbers may only contain one decimal."]} ==
+               Scanner.scan_tokens("123.3.3")
+    end
+
+    test "input '123.5e5e5' produces an error" do
+      assert {:error, :scanner,
+              ["[line 1] Error: Numbers may not contain a second scientific notation."]} ==
+               Scanner.scan_tokens("123.5e5e5")
+    end
+
+    test "input '123.5e5.5' produces an error" do
+      assert {:error, :scanner,
+              ["[line 1] Error: Numbers with scientific notation may only use integer exponents."]} =
+               Scanner.scan_tokens("123.5e5.5")
+    end
+
+    test "input '123.5e--5' produces an error" do
+      assert {:error, :scanner,
+              ["[line 1] Error: Scientific notation may only have one negation."]} =
+               Scanner.scan_tokens("123.5e--5")
+    end
+
+    property "input positive float values produce number literals" do
+      check all(float <- float(min: 0.0)) do
+        assert {:ok, [%Token{type: :number, literal: ^float}, %Token{type: :eof}]} =
+                 Scanner.scan_tokens(to_string(float))
+      end
     end
 
     test "input 'fooBar' produces an identifier" do

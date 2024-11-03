@@ -148,12 +148,22 @@ defmodule Ilox.Scanner do
 
   defp handle_number(%{rest: ""} = context), do: add_number_token(context, context.current)
 
-  defp handle_number(%{current: current, rest: rest} = context) do
-    case String.next_codepoint(rest) do
-      {c, rest} when is_digit(c) ->
-        handle_number(%{context | current: current <> c, rest: rest})
+  defp handle_number(context) do
+    handle_number_part(String.next_codepoint(context.rest), context)
+  end
 
-      {".", rest} ->
+  defp handle_number_part({c, rest}, %{current: current} = context) when is_digit(c),
+    do: handle_number(%{context | current: current <> c, rest: rest})
+
+  defp handle_number_part({".", rest}, %{current: current} = context) do
+    cond do
+      String.contains?(current, "e") ->
+        error(context, "Numbers with scientific notation may only use integer exponents.")
+
+      String.contains?(current, ".") ->
+        error(context, "Numbers may only contain one decimal.")
+
+      true ->
         case String.next_codepoint(rest) do
           {c, rest} when is_digit(c) ->
             handle_number(%{context | current: "#{current}.#{c}", rest: rest})
@@ -161,11 +171,33 @@ defmodule Ilox.Scanner do
           _ ->
             add_number_token(context, context.current)
         end
-
-      {c, rest} ->
-        add_number_token(%{context | rest: c <> rest}, context.current)
     end
   end
+
+  defp handle_number_part({"e", rest}, %{current: current} = context) do
+    if String.contains?(current, "e") do
+      error(context, "Numbers may not contain a second scientific notation.")
+    else
+      handle_number_exponent("e", String.next_codepoint(rest), context)
+    end
+  end
+
+  defp handle_number_part(_next_codepoint, context),
+    do: add_number_token(context, context.current)
+
+  defp handle_number_exponent(exp, {"-", rest}, context) do
+    if String.contains?(exp, "-") do
+      error(context, "Scientific notation may only have one negation.")
+    else
+      handle_number_exponent(exp <> "-", String.next_codepoint(rest), context)
+    end
+  end
+
+  defp handle_number_exponent(exp, {c, rest}, %{current: current} = context) when is_digit(c),
+    do: handle_number(%{context | current: "#{current}#{exp}#{c}", rest: rest})
+
+  defp handle_number_exponent(_exp, _codepoint, context),
+    do: add_number_token(context, context.current)
 
   defp add_number_token(context, value) do
     {number, _} = Float.parse(value)
