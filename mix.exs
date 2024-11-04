@@ -6,6 +6,7 @@ defmodule Lox.MixProject do
       app: :lox,
       version: "0.1.0",
       elixir: "~> 1.17",
+      elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       docs: [
@@ -38,7 +39,19 @@ defmodule Lox.MixProject do
       {:type_check, "~> 0.13.3"},
       {:credo, "~> 1.5", only: :dev},
       {:ex_doc, "~> 0.34.0", only: :dev},
-      {:stream_data, "~> 1.0", only: :test}
+      {:stream_data, "~> 1.0", only: [:dev, :test]}
     ]
+  end
+
+  defp elixirc_paths(:test) do
+    ~w(lib support test/support)
+  end
+
+  defp elixirc_paths(:dev) do
+    ~w(lib support)
+  end
+
+  defp elixirc_paths(_) do
+    ~w(lib)
   end
 end
