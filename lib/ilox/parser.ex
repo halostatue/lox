@@ -31,6 +31,7 @@ defmodule Ilox.Parser do
   ```
   """
 
+  alias Ilox.Errors
   alias Ilox.Scanner
   alias Ilox.Token
 
@@ -238,7 +239,7 @@ defmodule Ilox.Parser do
           raise Ilox.ParserError,
             token: current,
             message: "Expect right-hand expression.",
-            where: error_where(current),
+            where: Errors.where(current),
             ctx: ctx
 
         {right, ctx} ->
@@ -287,7 +288,7 @@ defmodule Ilox.Parser do
     raise Ilox.ParserError,
       token: token,
       message: message,
-      where: error_where(token),
+      where: Errors.where(token),
       ctx: ctx
   end
 
@@ -305,7 +306,7 @@ defmodule Ilox.Parser do
           raise Ilox.ParserError,
             token: current,
             message: "Expect right-hand expression.",
-            where: error_where(current),
+            where: Errors.where(current),
             ctx: ctx
 
         {right, ctx} ->
@@ -334,9 +335,6 @@ defmodule Ilox.Parser do
         end
     end
   end
-
-  def error_where(%{type: :eof}), do: "at end"
-  def error_where(%{lexeme: lexeme}), do: "at '#{lexeme}'"
 
   defp type_match(%Token{type: :eof}, _types), do: false
   defp type_match(%Token{type: type}, types) when is_list(types), do: type in types

@@ -239,7 +239,7 @@ defmodule Ilox.InterpreterExprTest do
     end
   end
 
-  defp env(), do: %{Env.new() | print: &print/1}
+  defp env, do: %{Env.new() | print: &print/1}
 
   defp print(message) do
     queue = Process.get(:"$ilox$output", [])

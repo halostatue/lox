@@ -1,4 +1,6 @@
 defmodule Ilox.StreamData do
+  @moduledoc false
+
   import StreamData
 
   @doc """
