@@ -5,15 +5,39 @@ defmodule Ilox.ParserExprTest do
   alias Ilox.Parser
   alias Ilox.Token
 
+  @atomics [
+    {"true", true},
+    {"false", false},
+    {"nil", nil}
+  ]
+
   describe "parse_expr/1: primary literal expressions" do
-    for {input, literal} <- [
-          {"true", true},
-          {"false", false},
-          {"nil", nil}
-        ] do
-      test "#{inspect(input)} -> {:literal, #{inspect(literal)}}" do
-        assert {:ok, {:literal_expr, unquote(literal)}} =
-                 Parser.parse_expr(unquote(input))
+    for {left, left_literal} <- @atomics do
+      test "#{inspect(left)} -> {:literal, #{inspect(left_literal)}}" do
+        assert {:ok, {:literal_expr, unquote(left_literal)}} =
+                 Parser.parse_expr(unquote(left))
+      end
+
+      for {right, right_literal} <- @atomics,
+          {operator, token} <- [
+            {"!=", :bang_equal},
+            {"==", :equal_equal},
+            {"<", :less},
+            {"<=", :less_equal},
+            {">", :greater},
+            {">=", :greater_equal},
+            {"-", :minus},
+            {"+", :plus},
+            {"/", :slash},
+            {"*", :star}
+          ] do
+        test "#{left} #{operator} #{right} -> {:binary_expr, {:literal, #{inspect(left_literal)}}, #{token}, {:literal, #{inspect(right_literal)}}}" do
+          assert {:ok,
+                  {:binary_expr, {:literal_expr, unquote(left_literal)},
+                   %Token{type: unquote(token)},
+                   {:literal_expr, unquote(right_literal)}}} =
+                   Parser.parse_expr("#{unquote(left)} #{unquote(operator)} #{unquote(right)}")
+        end
       end
     end
 

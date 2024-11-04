@@ -5,6 +5,8 @@ defmodule Ilox.ParserStmtTest do
   alias Ilox.Parser
   alias Ilox.Token
 
+  import Ilox.StreamData
+
   describe "parse/1: literal expression statements" do
     for {input, literal} <- [
           {"true", true},
@@ -27,14 +29,14 @@ defmodule Ilox.ParserStmtTest do
     end
 
     property "string;" do
-      check all(string <- string(:printable)) do
+      check all(string <- literal(:string)) do
         assert {:ok, [{:expr_stmt, {:literal_expr, %Token{type: :string, literal: ^string}}}]} =
                  Parser.parse(inspect(string) <> ";")
       end
     end
 
     property "-string;" do
-      check all(string <- string(:printable)) do
+      check all(string <- literal(:string)) do
         assert {:ok,
                 [
                   {:expr_stmt,
@@ -137,7 +139,7 @@ defmodule Ilox.ParserStmtTest do
     end
 
     property "!string;" do
-      check all(string <- string(:printable)) do
+      check all(string <- literal(:string)) do
         assert {:ok,
                 [
                   {:expr_stmt,
@@ -188,7 +190,7 @@ defmodule Ilox.ParserStmtTest do
     end
 
     property "(string);" do
-      check all(string <- string(:printable)) do
+      check all(string <- literal(:string)) do
         assert {:ok,
                 [
                   {:expr_stmt,
