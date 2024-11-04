@@ -72,9 +72,9 @@ defmodule Ilox.Parser do
   """
   @type print_stmt :: {:print_stmt, expr :: Ilox.expr()}
 
-  @spec parse(tokens :: binary | list(Token.t())) :: list(program)
+  @spec parse(tokens :: String.t() | list(Token.t())) :: list(program)
   def parse(source) when is_binary(source) do
-    case Scanner.scan_tokens(source) do
+    case Scanner.scan(source) do
       {:ok, tokens} -> parse(tokens)
       {:error, :scanner, errors} -> {:error, :scanner, errors}
     end
@@ -82,9 +82,9 @@ defmodule Ilox.Parser do
 
   def parse(tokens) when is_list(tokens), do: handle_program(tokens)
 
-  @spec parse_expr(tokens :: binary | list(Token.t())) :: Ilox.expr()
+  @spec parse_expr(tokens :: String.t() | list(Token.t())) :: Ilox.expr()
   def parse_expr(source) when is_binary(source) do
-    case Scanner.scan_tokens(source) do
+    case Scanner.scan(source) do
       {:ok, tokens} -> parse_expr(tokens)
       {:error, :scanner, errors} -> {:error, :scanner, errors}
     end

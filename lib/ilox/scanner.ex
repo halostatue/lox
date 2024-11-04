@@ -8,7 +8,7 @@ defmodule Ilox.Scanner do
 
   import Ilox.Guards
 
-  def scan_tokens(source) when is_binary(source) do
+  def scan(source) when is_binary(source) do
     case scan_next_token(source) do
       %{errors: [], tokens: tokens} -> {:ok, tokens}
       %{errors: errors} -> {:error, :scanner, Enum.reverse(errors)}

@@ -104,7 +104,7 @@ defmodule Ilox do
     System.halt(64)
   end
 
-  def scan(source) when is_binary(source), do: Scanner.scan_tokens(source)
+  def scan(source) when is_binary(source), do: Scanner.scan(source)
 
   def parse(tokens) when is_list(tokens), do: Parser.parse(tokens)
 
@@ -163,7 +163,7 @@ defmodule Ilox do
   end
 
   defp run_ilox(source) do
-    with {:ok, tokens} <- Scanner.scan_tokens(source),
+    with {:ok, tokens} <- Scanner.scan(source),
          {:ok, statements} <- Parser.parse(tokens),
          {:ok, result} <- Interpreter.interpret(statements) do
       {:ok, result}
