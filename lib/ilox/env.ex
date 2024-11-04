@@ -6,10 +6,11 @@ defmodule Ilox.Env do
   alias Ilox.Token
 
   @type t :: %__MODULE__{
-          values: %{required(Token.t()) => term()}
+          values: %{required(Token.t()) => term()},
+          print: (IO.chardata() | String.Chars.t() -> any())
         }
 
-  defstruct values: %{}
+  defstruct values: %{}, print: &IO.puts/1
 
   def new, do: %__MODULE__{}
 

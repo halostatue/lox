@@ -116,7 +116,7 @@ defmodule Ilox do
 
   def interpret(source) when is_binary(source) do
     with {:ok, expr} <- parse(source) do
-      Interpreter.interpret(expr)
+      Interpreter.run(expr)
     end
   end
 
@@ -165,7 +165,7 @@ defmodule Ilox do
   defp run_ilox(source) do
     with {:ok, tokens} <- Scanner.scan(source),
          {:ok, statements} <- Parser.parse(tokens),
-         {:ok, result} <- Interpreter.interpret(statements) do
+         {:ok, result} <- Interpreter.run(statements) do
       {:ok, result}
     else
       e -> show_ilox_error(e)
