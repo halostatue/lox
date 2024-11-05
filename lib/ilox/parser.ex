@@ -58,7 +58,7 @@ defmodule Ilox.Parser do
   Supported program statements. All statement types, except blocks, require a terminal
   semicolon (`;`) to be valid.
   """
-  @type statement :: expr_stmt | print_stmt
+  @type statement :: expr_stmt | print_stmt | block
 
   @typedoc section: :pgrammar
   @typedoc """
@@ -72,6 +72,12 @@ defmodule Ilox.Parser do
   A statement that displays the result of the expression to standard output.
   """
   @type print_stmt :: {:print_stmt, expr :: Ilox.expr()}
+
+  @typedoc section: :pgrammar
+  @typedoc """
+  A list of statements or declarations wrapped in curly braces.
+  """
+  @type block :: {:block, list(declaration)}
 
   @spec parse(tokens :: String.t() | list(Token.t())) :: list(program)
   def parse(source) when is_binary(source) do
@@ -100,7 +106,7 @@ defmodule Ilox.Parser do
   end
 
   defp handle_program(tokens) when is_list(tokens) do
-    case handle_program(%{errors: [], statements: [], tokens: tokens}) do
+    case handle_program(%{errors: [], statements: [], tokens: tokens, scopes: []}) do
       %{errors: [], statements: []} ->
         raise "This should be unreachable. No errors and no statements returned."
 
@@ -158,16 +164,44 @@ defmodule Ilox.Parser do
   defp handle_statement(%{tokens: []} = ctx), do: ctx
   defp handle_statement(%{tokens: [%Token{type: :eof} | _]} = ctx), do: ctx
 
+  defp handle_statement(%{tokens: [%Token{type: :right_brace} | tokens]} = ctx),
+    do: %{ctx | tokens: tokens}
+
   defp handle_statement(%{tokens: [%Token{type: :print} | tokens]} = ctx) do
     {expr, ctx} = handle_expression(%{ctx | tokens: tokens})
     {_, ctx} = expect_semicolon(ctx, "value")
     add_statement(ctx, {:print_stmt, expr})
   end
 
+  defp handle_statement(%{tokens: [%Token{type: :left_brace} | tokens]} = ctx),
+    do: handle_block(%{ctx | tokens: tokens})
+
   defp handle_statement(ctx) do
     {expr, ctx} = handle_expression(ctx)
     {_, ctx} = expect_semicolon(ctx, "expression")
     add_statement(ctx, {:expr_stmt, expr})
+  end
+
+  defp handle_block(ctx) do
+    # Block handling is harder in an immutable environments. We need to explicitly
+    # recognize the outer and inner contexts, because we have to stack the outer context
+    # for recovery. The tokens are being transferred to the inner context, so clear the
+    # outer context tokens. The inner context starts with empty statements.
+    outer_ctx = %{ctx | tokens: []}
+    inner_ctx = %{ctx | statements: [], scopes: [outer_ctx | ctx.scopes]}
+
+    # Process the declarations inside the block.
+    inner_ctx = handle_declaration(inner_ctx)
+
+    # Pop the outer context from the scopes stack, and then set the tokens and errors
+    # from the inner context to recognize what has been consumed. The existing statements
+    # is already valid.
+    [outer_ctx | _] = inner_ctx.scopes
+    outer_ctx = %{outer_ctx | tokens: inner_ctx.tokens, errors: inner_ctx.errors}
+
+    # Finally, add the block statement to the outer context to the outer context. However,
+    # remember to *reverse* the block statements because we collect statements backwards.
+    add_statement(outer_ctx, {:block, Enum.reverse(inner_ctx.statements)})
   end
 
   defp handle_expression(%{tokens: []} = ctx),
@@ -188,7 +222,7 @@ defmodule Ilox.Parser do
 
       case expr do
         {:var_expr, name} ->
-          {{:assignment_expr, name, value}, ctx}
+          {{:assign_expr, name, value}, ctx}
 
         _ ->
           raise Ilox.ParserError,
@@ -319,7 +353,7 @@ defmodule Ilox.Parser do
   end
 
   defp add_statement(ctx, statement),
-    do: handle_statement(%{ctx | statements: [statement | ctx.statements]})
+    do: handle_declaration(%{ctx | statements: [statement | ctx.statements]})
 
   defp synchronize(ctx) do
     case handle_advance(ctx) do

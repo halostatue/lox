@@ -199,4 +199,31 @@ defmodule Ilox.ScannerTest do
                """)
     end
   end
+
+  describe "block scanner" do
+    test "scope" do
+      assert {:ok, _} =
+               Scanner.scan("""
+               var a = "global a";
+               var b = "global b";
+               var c = "global c";
+               {
+                 var a = "outer a";
+                 var b = "outer b";
+                 {
+                   var a = "inner a";
+                   print a;
+                   print b;
+                   print c;
+                 }
+                 print a;
+                 print b;
+                 print c;
+               }
+               print a;
+               print b;
+               print c;
+               """)
+    end
+  end
 end

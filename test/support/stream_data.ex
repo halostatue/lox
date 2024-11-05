@@ -15,7 +15,7 @@ defmodule Ilox.StreamData do
   def literal(:string) do
     filter(
       string(:printable),
-      &(!String.contains?(&1, ["\r", "\t", "\v", "\"", "\'", "\n", "\f"]))
+      &(!String.contains?(&1, ["\"", "\'", "\d", "\f", "\n", "\r", "\t", "\v"]))
     )
   end
 

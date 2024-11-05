@@ -59,7 +59,7 @@ defmodule Ilox.Token do
   @type! t :: %__MODULE__{
            type: lox_tokens(),
            line: non_neg_integer(),
-           lexeme: binary(),
+           lexeme: String.t(),
            literal: term()
          }
 

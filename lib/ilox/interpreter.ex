@@ -159,6 +159,11 @@ defmodule Ilox.Interpreter do
     {env, nil}
   end
 
+  defp handle_expression(env, {:block, statements}) do
+    %{enclosing: env} = handle_statements(Env.new(env), statements)
+    {env, nil}
+  end
+
   # Comparison operators *must* be restricted to numbers, because all values in the BEAM
   # are comparables.
   defp handle_operator(%Token{type: :minus}, left, right, :number), do: left - right

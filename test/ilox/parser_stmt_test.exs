@@ -266,7 +266,7 @@ defmodule Ilox.ParserStmtTest do
       assert {:ok,
               [
                 {:expr_stmt,
-                 {:assignment_expr, %Token{type: :identifier, lexeme: "left"},
+                 {:assign_expr, %Token{type: :identifier, lexeme: "left"},
                   {:var_expr, %Token{type: :identifier, lexeme: "right"}}}}
               ]} = Parser.parse("left = right;")
     end
@@ -294,6 +294,119 @@ defmodule Ilox.ParserStmtTest do
     test "var; errors on missing identifier" do
       assert {:error, :parser, ["[line 1] Error at ';': Expect variable name."]} =
                Parser.parse("var;")
+    end
+  end
+
+  describe "parse/1: block statements" do
+    test "one block" do
+      assert {:ok,
+              [
+                {:print_stmt, {:literal_expr, %Token{type: :number, literal: 1.0}}},
+                {:block,
+                 [
+                   {:print_stmt, {:literal_expr, %Token{type: :number, literal: 2.0}}},
+                   {:print_stmt, {:literal_expr, %Token{type: :number, literal: 3.0}}}
+                 ]},
+                {:print_stmt, {:literal_expr, %Token{type: :number, literal: 4.0}}}
+              ]} =
+               Parser.parse("print 1; { print 2; print 3; } print 4;")
+    end
+
+    test "two blocks" do
+      assert {:ok,
+              [
+                {:print_stmt, {:literal_expr, %Token{type: :number, literal: 1.0}}},
+                {:block, [{:print_stmt, {:literal_expr, %Token{type: :number, literal: 2.0}}}]},
+                {:block, [{:print_stmt, {:literal_expr, %Token{type: :number, literal: 3.0}}}]},
+                {:print_stmt, {:literal_expr, %Token{type: :number, literal: 4.0}}}
+              ]} =
+               Parser.parse("print 1; { print 2; } { print 3; } print 4;")
+    end
+
+    test "nested blocks 1" do
+      assert {:ok,
+              [
+                {:block,
+                 [
+                   {:print_stmt, {:literal_expr, %Token{type: :number, literal: 1.0}}},
+                   {:block,
+                    [
+                      {:print_stmt, {:literal_expr, %Token{type: :number, literal: 2.0}}},
+                      {:print_stmt, {:literal_expr, %Token{type: :number, literal: 3.0}}}
+                    ]},
+                   {:print_stmt, {:literal_expr, %Token{type: :number, literal: 4.0}}}
+                 ]}
+              ]} =
+               Parser.parse("{ print 1; { print 2; print 3; } print 4; }")
+    end
+
+    test "nested blocks 2" do
+      assert {:ok,
+              [
+                {:block,
+                 [
+                   {:print_stmt, {:literal_expr, %Token{type: :number, literal: 1.0}}},
+                   {:block,
+                    [
+                      {:print_stmt, {:literal_expr, %Token{type: :number, literal: 2.0}}},
+                      {:block,
+                       [
+                         {:print_stmt, {:literal_expr, %Token{type: :number, literal: 3.0}}}
+                       ]},
+                      {:print_stmt, {:literal_expr, %Token{type: :number, literal: 4.0}}}
+                    ]},
+                   {:print_stmt, {:literal_expr, %Token{type: :number, literal: 5.0}}}
+                 ]}
+              ]} =
+               Parser.parse("{ print 1; { print 2; { print 3; } print 4; } print 5; }")
+    end
+
+    test "scope" do
+      assert {:ok,
+              [
+                {:var_decl, %Token{lexeme: "a"}, {:literal_expr, %Token{type: :string}}},
+                {:var_decl, %Token{lexeme: "b"}, {:literal_expr, %Token{type: :string}}},
+                {:var_decl, %Token{lexeme: "c"}, {:literal_expr, %Token{type: :string}}},
+                {:block,
+                 [
+                   {:var_decl, %Token{lexeme: "a"}, {:literal_expr, %Token{type: :string}}},
+                   {:var_decl, %Token{lexeme: "b"}, {:literal_expr, %Token{type: :string}}},
+                   {:block,
+                    [
+                      {:var_decl, %Token{lexeme: "a"}, {:literal_expr, %Token{type: :string}}},
+                      {:print_stmt, {:var_expr, %Token{lexeme: "a"}}},
+                      {:print_stmt, {:var_expr, %Token{lexeme: "b"}}},
+                      {:print_stmt, {:var_expr, %Token{lexeme: "c"}}}
+                    ]},
+                   {:print_stmt, {:var_expr, %Token{lexeme: "a"}}},
+                   {:print_stmt, {:var_expr, %Token{lexeme: "b"}}},
+                   {:print_stmt, {:var_expr, %Token{lexeme: "c"}}}
+                 ]},
+                {:print_stmt, {:var_expr, %Token{lexeme: "a"}}},
+                {:print_stmt, {:var_expr, %Token{lexeme: "b"}}},
+                {:print_stmt, {:var_expr, %Token{lexeme: "c"}}}
+              ]} =
+               Parser.parse("""
+               var a = "global a";
+               var b = "global b";
+               var c = "global c";
+               {
+                 var a = "outer a";
+                 var b = "outer b";
+                 {
+                   var a = "inner a";
+                   print a;
+                   print b;
+                   print c;
+                 }
+                 print a;
+                 print b;
+                 print c;
+               }
+               print a;
+               print b;
+               print c;
+               """)
     end
   end
 end
