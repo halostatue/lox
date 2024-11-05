@@ -6,7 +6,6 @@ defmodule Ilox do
   [3]: https://craftinginterpreters.com/a-tree-walk-interpreter.html
   """
 
-  alias Ilox.Context
   alias Ilox.Interpreter
   alias Ilox.Parser
   alias Ilox.Scanner
@@ -87,9 +86,6 @@ defmodule Ilox do
   """
   @type assign_expr :: {:assign_expr, identifier :: Token.t(), value :: expr}
 
-  @doc false
-  defdelegate add_error(message), to: Context
-
   def run, do: run([])
 
   def run([script]), do: run_script_file(script)
@@ -154,8 +150,6 @@ defmodule Ilox do
             {:error, _} -> nil
           end
 
-          # Clear the context on each line, for now.
-          Context.clear()
           :cont
       end
 
