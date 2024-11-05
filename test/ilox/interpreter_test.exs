@@ -128,15 +128,136 @@ defmodule Ilox.InterpreterTest do
     end
   end
 
-  defp run(source) do
-    case Interpreter.run(env(), source) do
+  describe "parse/1: control flow" do
+    test "if" do
+      source = """
+      if (:cond)
+        print 2;
+      """
+
+      assert {:ok, output: ["2"]} = run(source, cond: "true")
+      assert {:ok, output: []} = run(source, cond: "false")
+    end
+
+    test "if block" do
+      source = """
+      if (:cond) { 
+        print 2;
+      }
+      """
+
+      assert {:ok, output: ["2"]} = run(source, cond: "true")
+      assert {:ok, output: []} = run(source, cond: "false")
+    end
+
+    test "if/else" do
+      source = """
+      if (:cond)
+        print 2;
+      else
+        print 3;
+      """
+
+      assert {:ok, output: ["2"]} = run(source, cond: "true")
+      assert {:ok, output: ["3"]} = run(source, cond: "false")
+    end
+
+    test "if/else (block)" do
+      source = """
+      if (:cond) { 
+        print 2;
+      } else {
+        print 3;
+      }
+      """
+
+      assert {:ok, output: ["2"]} = run(source, cond: "true")
+      assert {:ok, output: ["3"]} = run(source, cond: "false")
+    end
+
+    test "if if/else" do
+      # This is pathological. Do not do this.
+      source = """
+      if (:cond1) if (:cond2) print 2; else print 3;
+      """
+
+      assert {:ok, output: ["2"]} = run(source, cond1: "true", cond2: "true")
+      assert {:ok, output: ["3"]} = run(source, cond1: "true", cond2: "false")
+      assert {:ok, output: []} = run(source, cond1: "false", cond2: "true")
+      assert {:ok, output: []} = run(source, cond1: "false", cond2: "false")
+    end
+
+    test "if if/else block" do
+      source = """
+      if (:cond1) {
+        if (:cond2) {
+          print 2;
+        } else {
+          print 3;
+        }
+      }
+      """
+
+      assert {:ok, output: ["2"]} = run(source, cond1: "true", cond2: "true")
+      assert {:ok, output: ["3"]} = run(source, cond1: "true", cond2: "false")
+      assert {:ok, output: []} = run(source, cond1: "false", cond2: "true")
+      assert {:ok, output: []} = run(source, cond1: "false", cond2: "false")
+    end
+
+    test "if if/else else" do
+      # This is pathological. Do not do this.
+      source = """
+      if (:cond1)
+        if (:cond2)
+          print 2;
+        else
+          print 3;
+      else
+        print 4;
+      """
+
+      assert {:ok, output: ["2"]} = run(source, cond1: "true", cond2: "true")
+      assert {:ok, output: ["3"]} = run(source, cond1: "true", cond2: "false")
+      assert {:ok, output: ["4"]} = run(source, cond1: "false", cond2: "true")
+      assert {:ok, output: ["4"]} = run(source, cond1: "false", cond2: "false")
+    end
+
+    test "if if/else else block" do
+      source = """
+      if (:cond1) {
+        if (:cond2) {
+          print 2;
+        } else {
+          print 3;
+        }
+      } else {
+        print 4;
+      }
+      """
+
+      assert {:ok, output: ["2"]} = run(source, cond1: "true", cond2: "true")
+      assert {:ok, output: ["3"]} = run(source, cond1: "true", cond2: "false")
+      assert {:ok, output: ["4"]} = run(source, cond1: "false", cond2: "true")
+      assert {:ok, output: ["4"]} = run(source, cond1: "false", cond2: "false")
+    end
+  end
+
+  defp run(source, replacements \\ []) do
+    case Interpreter.run(env(), __replace(source, replacements)) do
       :ok ->
         {:ok, output: Enum.reverse(Process.get(:"$ilox$output", []))}
 
       {:error, type, errors} ->
         {:error, type, errors, Enum.reverse(Process.get(:"$ilox$output", []))}
     end
+  after
+    Process.delete(:"$ilox$output")
   end
+
+  defp __replace(source, []), do: source
+
+  defp __replace(source, [{key, value} | rest]),
+    do: __replace(String.replace(source, inspect(key), value), rest)
 
   defp env, do: %{Env.new() | print: &print/1}
 

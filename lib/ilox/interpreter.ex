@@ -85,6 +85,8 @@ defmodule Ilox.Interpreter do
 
   defp stringify(value), do: to_string(value)
 
+  defp handle_expression(env, nil), do: {env, nil}
+
   defp handle_expression(env, {:literal_expr, value}) when value in [true, false, nil],
     do: {env, value}
 
@@ -161,6 +163,12 @@ defmodule Ilox.Interpreter do
 
   defp handle_expression(env, {:block, statements}) do
     %{enclosing: env} = handle_statements(Env.new(env), statements)
+    {env, nil}
+  end
+
+  defp handle_expression(env, {:if_stmt, condition, then_branch, else_branch}) do
+    {env, value} = handle_expression(env, condition)
+    {env, _value} = handle_expression(env, if(value, do: then_branch, else: else_branch))
     {env, nil}
   end
 

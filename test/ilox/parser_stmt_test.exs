@@ -409,4 +409,143 @@ defmodule Ilox.ParserStmtTest do
                """)
     end
   end
+
+  describe "parse/1: control flow" do
+    test "if" do
+      assert {:ok,
+              [
+                {:if_stmt, {:literal_expr, %Token{type: :number}},
+                 {:print_stmt, {:literal_expr, %Token{type: :number}}}, nil}
+              ]} =
+               Parser.parse("""
+               if (1)
+                 print 2;
+               """)
+    end
+
+    test "if block" do
+      assert {:ok,
+              [
+                {:if_stmt, {:literal_expr, %Token{type: :number}},
+                 {:block, [{:print_stmt, {:literal_expr, %Token{type: :number}}}]}, nil}
+              ]} =
+               Parser.parse("""
+               if (1) { 
+                 print 2;
+               }
+               """)
+    end
+
+    test "if/else" do
+      assert {:ok,
+              [
+                {:if_stmt, {:literal_expr, %Token{type: :number}},
+                 {:print_stmt, {:literal_expr, %Token{type: :number}}},
+                 {:print_stmt, {:literal_expr, %Token{type: :number}}}}
+              ]} =
+               Parser.parse("""
+               if (1)
+                 print 2;
+               else
+                 print 3;
+               """)
+    end
+
+    test "if/else (block)" do
+      assert {:ok,
+              [
+                {:if_stmt, {:literal_expr, %Token{type: :number}},
+                 {:block, [{:print_stmt, {:literal_expr, %Token{type: :number}}}]},
+                 {:block, [{:print_stmt, {:literal_expr, %Token{type: :number}}}]}}
+              ]} =
+               Parser.parse("""
+               if (1) { 
+                 print 2;
+               } else {
+                 print 3;
+               }
+               """)
+    end
+
+    test "if if/else" do
+      # This is pathological. Do not do this.
+      assert {:ok,
+              [
+                {:if_stmt, {:literal_expr, %Token{type: :number}},
+                 {:if_stmt, {:literal_expr, %Token{type: :number}},
+                  {:print_stmt, {:literal_expr, %Token{type: :number}}},
+                  {:print_stmt, {:literal_expr, %Token{type: :number}}}}, nil}
+              ]} =
+               Parser.parse("""
+               if (1) if (2) print 2; else print 3;
+               """)
+    end
+
+    test "if if/else block" do
+      assert {:ok,
+              [
+                {:if_stmt, {:literal_expr, %Token{type: :number}},
+                 {:block,
+                  [
+                    {:if_stmt, {:literal_expr, %Token{type: :number}},
+                     {:block, [{:print_stmt, {:literal_expr, %Token{type: :number}}}]},
+                     {:block, [{:print_stmt, {:literal_expr, %Token{type: :number}}}]}}
+                  ]}, nil}
+              ]} =
+               Parser.parse("""
+               if (1) {
+                 if (2) {
+                   print 2;
+                 } else {
+                   print 3;
+                 }
+               }
+               """)
+    end
+
+    test "if if/else else" do
+      # This is pathological. Do not do this.
+      assert {:ok,
+              [
+                {:if_stmt, {:literal_expr, %Token{type: :number}},
+                 {:if_stmt, {:literal_expr, %Token{type: :number}},
+                  {:print_stmt, {:literal_expr, %Token{type: :number}}},
+                  {:print_stmt, {:literal_expr, %Token{type: :number}}}},
+                 {:print_stmt, {:literal_expr, %Token{type: :number}}}}
+              ]} =
+               Parser.parse("""
+               if (1)
+                 if (2)
+                   print 2;
+                 else
+                   print 3;
+               else
+                 print 4;
+               """)
+    end
+
+    test "if if/else else block" do
+      assert {:ok,
+              [
+                {:if_stmt, {:literal_expr, %Token{type: :number}},
+                 {:block,
+                  [
+                    {:if_stmt, {:literal_expr, %Token{type: :number}},
+                     {:block, [{:print_stmt, {:literal_expr, %Token{type: :number}}}]},
+                     {:block, [{:print_stmt, {:literal_expr, %Token{type: :number}}}]}}
+                  ]}, {:block, [{:print_stmt, {:literal_expr, %Token{type: :number}}}]}}
+              ]} =
+               Parser.parse("""
+               if (1) {
+                 if (2) {
+                   print 2;
+                 } else {
+                   print 3;
+                 }
+               } else {
+                 print 4;
+               }
+               """)
+    end
+  end
 end

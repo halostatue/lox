@@ -26,7 +26,7 @@ defmodule Ilox.Parser do
               |  IDENTIFIER ;
   program     →  ( declaration )* ;
   declaration →  var_decl | statement ;
-  statement   →  expr_stmt | print_stmt ;
+  statement   →  expr_stmt | print_stmt | block | if_stmt;
   var_decl    →  "var" IDENTIFIER ( "=" expression )? ";" ;
   ```
   """
@@ -58,7 +58,7 @@ defmodule Ilox.Parser do
   Supported program statements. All statement types, except blocks, require a terminal
   semicolon (`;`) to be valid.
   """
-  @type statement :: expr_stmt | print_stmt | block
+  @type statement :: expr_stmt | print_stmt | block | if_stmt
 
   @typedoc section: :pgrammar
   @typedoc """
@@ -78,6 +78,13 @@ defmodule Ilox.Parser do
   A list of statements or declarations wrapped in curly braces.
   """
   @type block :: {:block, list(declaration)}
+
+  @typedoc section: :pgrammar
+  @typedoc """
+  A conditional with an expression and a statement executed when the expression is truthy.
+  It may optionally have a else statement executed when the expression is falsy.
+  """
+  @type if_stmt :: {:if_stmt, expr :: Ilox.expr(), truthy :: statement, falsy :: nil | statement}
 
   @spec parse(tokens :: String.t() | list(Token.t())) :: list(program)
   def parse(source) when is_binary(source) do
@@ -106,7 +113,9 @@ defmodule Ilox.Parser do
   end
 
   defp handle_program(tokens) when is_list(tokens) do
-    case handle_program(%{errors: [], statements: [], tokens: tokens, scopes: []}) do
+    ctx = %{errors: [], statements: [], tokens: tokens, scopes: [], break: 0}
+
+    case handle_program(ctx) do
       %{errors: [], statements: []} ->
         raise "This should be unreachable. No errors and no statements returned."
 
@@ -164,17 +173,17 @@ defmodule Ilox.Parser do
   defp handle_statement(%{tokens: []} = ctx), do: ctx
   defp handle_statement(%{tokens: [%Token{type: :eof} | _]} = ctx), do: ctx
 
-  defp handle_statement(%{tokens: [%Token{type: :right_brace} | tokens]} = ctx),
-    do: %{ctx | tokens: tokens}
-
-  defp handle_statement(%{tokens: [%Token{type: :print} | tokens]} = ctx) do
-    {expr, ctx} = handle_expression(%{ctx | tokens: tokens})
-    {_, ctx} = expect_semicolon(ctx, "value")
-    add_statement(ctx, {:print_stmt, expr})
-  end
+  defp handle_statement(%{tokens: [%Token{type: :print} | tokens]} = ctx),
+    do: handle_print_statement(%{ctx | tokens: tokens})
 
   defp handle_statement(%{tokens: [%Token{type: :left_brace} | tokens]} = ctx),
     do: handle_block(%{ctx | tokens: tokens})
+
+  defp handle_statement(%{tokens: [%Token{type: :right_brace} | tokens]} = ctx),
+    do: %{ctx | tokens: tokens}
+
+  defp handle_statement(%{tokens: [%Token{type: :if} | tokens]} = ctx),
+    do: handle_if_statement(%{ctx | tokens: tokens})
 
   defp handle_statement(ctx) do
     {expr, ctx} = handle_expression(ctx)
@@ -182,13 +191,63 @@ defmodule Ilox.Parser do
     add_statement(ctx, {:expr_stmt, expr})
   end
 
+  defp handle_print_statement(ctx) do
+    {expr, ctx} = handle_expression(ctx)
+    {_, ctx} = expect_semicolon(ctx, "value")
+    add_statement(ctx, {:print_stmt, expr})
+  end
+
+  defp handle_if_statement(ctx) do
+    {_, ctx} = expect(ctx, :left_paren, "Expect '(' after 'if'.")
+    {condition, ctx} = handle_expression(ctx)
+    {_, ctx} = expect(ctx, :right_paren, "Expect ')' after 'if' condition.")
+
+    {then_branch, %{tokens: [head | _]} = ctx} = handle_nested_statement(ctx)
+
+    {else_branch, ctx} =
+      if type_match(head, :else) do
+        {_, ctx} = handle_advance(ctx)
+        handle_nested_statement(ctx)
+      else
+        {nil, ctx}
+      end
+
+    add_statement(ctx, {:if_stmt, condition, then_branch, else_branch})
+  end
+
+  # Nested statement handling is required for flow control, where an execution branch may
+  # be a single statement or a block of statements. Recursive parsing is greedy (all
+  # statements will be processed until end of input or some other terminal condition), so
+  # we need to *add* a terminal condition, which we are calling `break: number()`. If
+  # `break` is 0, then we process normally. If it is greater than zero, then when
+  # `add_statement/2` is called, it drops the break level by 1.
+  #
+  # Statement handlers only return the context, and the most recent statement added would
+  # be what we need to get, so we're not going to stack scope processing like we do
+  # in `handle_block/1`, but we will cheat and just pop the most recent statement off the
+  # front of the list for processing.
+  #
+  # We set `break: true` before calling `handle_statement/1` so that we don't recurse back
+  defp handle_nested_statement(ctx) do
+    %{statements: [head | rest]} = ctx = handle_statement(%{ctx | break: ctx.break + 1})
+    {head, %{ctx | statements: rest}}
+  end
+
+  # For block handling, We need to explicitly recognize the outer and inner contexts,
+  # because we have to stack the outer context for recovery.
+  #
+  # The tokens are being transferred to the inner context, so clear the outer context
+  # tokens so that we are forced to reset it after.
+  #
+  # This works because the right brace is a breakpoint and is handled by
+  # `handle_statement/1`. To prevent issues in processing nested statements, we set
+  # `single: false` on the inner context.
+  #
+  # The inner context starts with empty `statements`, because the result will be wrapped
+  # in a block entry.
   defp handle_block(ctx) do
-    # Block handling is harder in an immutable environments. We need to explicitly
-    # recognize the outer and inner contexts, because we have to stack the outer context
-    # for recovery. The tokens are being transferred to the inner context, so clear the
-    # outer context tokens. The inner context starts with empty statements.
     outer_ctx = %{ctx | tokens: []}
-    inner_ctx = %{ctx | statements: [], scopes: [outer_ctx | ctx.scopes]}
+    inner_ctx = %{ctx | statements: [], scopes: [outer_ctx | ctx.scopes], break: 0}
 
     # Process the declarations inside the block.
     inner_ctx = handle_declaration(inner_ctx)
@@ -352,7 +411,10 @@ defmodule Ilox.Parser do
     end
   end
 
-  defp add_statement(ctx, statement),
+  defp add_statement(%{break: value} = ctx, statement) when is_integer(value) and value > 0,
+    do: %{ctx | statements: [statement | ctx.statements], break: ctx.break - 1}
+
+  defp add_statement(%{break: 0} = ctx, statement),
     do: handle_declaration(%{ctx | statements: [statement | ctx.statements]})
 
   defp synchronize(ctx) do
