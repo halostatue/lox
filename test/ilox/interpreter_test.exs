@@ -50,7 +50,7 @@ defmodule Ilox.InterpreterTest do
     end
   end
 
-  describe "parse/1: block statements" do
+  describe "run/1: block statements" do
     test "one block" do
       assert {:ok, output: ~w[1 2 3 3]} =
                run("""
@@ -128,7 +128,7 @@ defmodule Ilox.InterpreterTest do
     end
   end
 
-  describe "parse/1: control flow" do
+  describe "run/1: if statements" do
     test "if" do
       source = """
       if (:cond)
@@ -141,7 +141,7 @@ defmodule Ilox.InterpreterTest do
 
     test "if block" do
       source = """
-      if (:cond) { 
+      if (:cond) {
         print 2;
       }
       """
@@ -164,7 +164,7 @@ defmodule Ilox.InterpreterTest do
 
     test "if/else (block)" do
       source = """
-      if (:cond) { 
+      if (:cond) {
         print 2;
       } else {
         print 3;
@@ -239,6 +239,41 @@ defmodule Ilox.InterpreterTest do
       assert {:ok, output: ["3"]} = run(source, cond1: "true", cond2: "false")
       assert {:ok, output: ["4"]} = run(source, cond1: "false", cond2: "true")
       assert {:ok, output: ["4"]} = run(source, cond1: "false", cond2: "false")
+    end
+  end
+
+  describe "run/1: while statement" do
+    test "while statement" do
+      source = """
+      var a = 3 ;
+      while (a > 1) {
+        print a;
+        a = a - 1;
+       }
+      """
+
+      assert {:ok, output: ["3", "2"]} = run(source)
+    end
+  end
+
+  describe "run/1: for statement" do
+    test "for (var a = 2; a > 0; a = a - 1) print a;" do
+      assert {:ok, output: ["2", "1"]} = run("for (var a = 2; a > 0; a = a - 1) print a;")
+    end
+
+    test "for (var a = 3; a > 0; a = a - 1) { print a; }" do
+      assert {:ok, output: ["3", "2", "1"]} =
+               run("for (var a = 3; a > 0; a = a - 1) { print a; }")
+    end
+  end
+
+  describe "run/2: logical operators" do
+    test "print \"hi\" or 2;" do
+      assert {:ok, output: ["hi"]} = run("print \"hi\" or 2;")
+    end
+
+    test "print nil or \"yes\";" do
+      assert {:ok, output: ["yes"]} = run("print nil or \"yes\";")
     end
   end
 

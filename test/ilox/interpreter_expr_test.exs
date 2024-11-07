@@ -10,28 +10,28 @@ defmodule Ilox.InterpreterExprTest do
   describe "eval_expr/2: equality" do
     property "value == value -> true" do
       check all(value <- literal()) do
-        assert {:ok, [expr: "true", output: []]} =
+        assert {:ok, expr: "true", output: []} =
                  eval_expr("#{inspect(value)} == #{inspect(value)}")
       end
     end
 
     property "value != value -> false" do
       check all(value <- literal()) do
-        assert {:ok, [expr: "false", output: []]} =
+        assert {:ok, expr: "false", output: []} =
                  eval_expr("#{inspect(value)} != #{inspect(value)}")
       end
     end
 
     property "left == right -> false" do
       check all(left <- literal(), right <- filter(literal(), neq(left))) do
-        assert {:ok, [expr: "false", output: []]} =
+        assert {:ok, expr: "false", output: []} =
                  eval_expr("#{inspect(left)} == (#{inspect(right)})")
       end
     end
 
     property "left != right -> true" do
       check all(left <- literal(), right <- filter(literal(), neq(left))) do
-        assert {:ok, [expr: "true", output: []]} =
+        assert {:ok, expr: "true", output: []} =
                  eval_expr("#{inspect(left)} != (#{inspect(right)})")
       end
     end
@@ -40,56 +40,56 @@ defmodule Ilox.InterpreterExprTest do
   describe "eval_expr/2: comparison" do
     property "left < right -> true" do
       check all(left <- negative_number(), right <- positive_number()) do
-        assert {:ok, [expr: "true", output: []]} =
+        assert {:ok, expr: "true", output: []} =
                  eval_expr("#{inspect(left)} < (#{inspect(right)})")
       end
     end
 
     property "right < left -> false" do
       check all(left <- negative_number(), right <- positive_number()) do
-        assert {:ok, [expr: "false", output: []]} =
+        assert {:ok, expr: "false", output: []} =
                  eval_expr("(#{inspect(right)}) < #{inspect(left)}")
       end
     end
 
     property "left <= right -> true" do
       check all(left <- negative_number(), right <- positive_number()) do
-        assert {:ok, [expr: "true", output: []]} =
+        assert {:ok, expr: "true", output: []} =
                  eval_expr("#{inspect(left)} <= (#{inspect(right)})")
       end
     end
 
     property "right <= left -> false" do
       check all(left <- negative_number(), right <- positive_number()) do
-        assert {:ok, [expr: "false", output: []]} =
+        assert {:ok, expr: "false", output: []} =
                  eval_expr("(#{inspect(right)}) <= #{inspect(left)}")
       end
     end
 
     property "left > right -> true" do
       check all(left <- positive_number(), right <- negative_number()) do
-        assert {:ok, [expr: "true", output: []]} =
+        assert {:ok, expr: "true", output: []} =
                  eval_expr("#{inspect(left)} > (#{inspect(right)})")
       end
     end
 
     property "right > left -> false" do
       check all(left <- positive_number(), right <- negative_number()) do
-        assert {:ok, [expr: "false", output: []]} =
+        assert {:ok, expr: "false", output: []} =
                  eval_expr("(#{inspect(right)}) > #{inspect(left)}")
       end
     end
 
     property "left >= right -> true" do
       check all(left <- positive_number(), right <- negative_number()) do
-        assert {:ok, [expr: "true", output: []]} =
+        assert {:ok, expr: "true", output: []} =
                  eval_expr("#{inspect(left)} >= (#{inspect(right)})")
       end
     end
 
     property "right >= left -> false" do
       check all(left <- positive_number(), right <- negative_number()) do
-        assert {:ok, [expr: "false", output: []]} =
+        assert {:ok, expr: "false", output: []} =
                  eval_expr("(#{inspect(right)}) >= #{inspect(left)}")
       end
     end
@@ -122,7 +122,7 @@ defmodule Ilox.InterpreterExprTest do
       check all(left <- literal(:string), right <- literal(:string)) do
         expr = inspect(left <> right)
 
-        assert {:ok, [expr: ^expr, output: []]} =
+        assert {:ok, expr: ^expr, output: []} =
                  eval_expr("#{inspect(left)} + (#{inspect(right)})")
       end
     end
@@ -133,7 +133,7 @@ defmodule Ilox.InterpreterExprTest do
         right = right / 1
         expr = number_to_string(left + right)
 
-        assert {:ok, [expr: ^expr, output: []]} =
+        assert {:ok, expr: ^expr, output: []} =
                  eval_expr("#{inspect(left)} + (#{inspect(right)})")
       end
     end
@@ -144,7 +144,7 @@ defmodule Ilox.InterpreterExprTest do
         right = right / 1
         expr = number_to_string(left - right)
 
-        assert {:ok, [expr: ^expr, output: []]} =
+        assert {:ok, expr: ^expr, output: []} =
                  eval_expr("#{inspect(left)} - (#{inspect(right)})")
       end
     end
@@ -155,7 +155,7 @@ defmodule Ilox.InterpreterExprTest do
         right = right / 1
         expr = number_to_string(left * right)
 
-        assert {:ok, [expr: ^expr, output: []]} =
+        assert {:ok, expr: ^expr, output: []} =
                  eval_expr("#{inspect(left)} * (#{inspect(right)})")
       end
     end
@@ -166,7 +166,7 @@ defmodule Ilox.InterpreterExprTest do
         right = right / 1
         expr = number_to_string(left / right)
 
-        assert {:ok, [expr: ^expr, output: []]} =
+        assert {:ok, expr: ^expr, output: []} =
                  eval_expr("#{inspect(left)} / (#{inspect(right)})")
       end
     end
@@ -185,50 +185,80 @@ defmodule Ilox.InterpreterExprTest do
 
     property "!number -> false" do
       check all(value <- number()) do
-        assert {:ok, [expr: "false", output: []]} = eval_expr("!#{value}")
+        assert {:ok, expr: "false", output: []} = eval_expr("!#{value}")
       end
     end
 
     property "!string -> false" do
       check all(value <- literal(:string)) do
-        assert {:ok, [expr: "false", output: []]} = eval_expr("!#{inspect(value)}")
+        assert {:ok, expr: "false", output: []} = eval_expr("!#{inspect(value)}")
       end
     end
 
     test "!true -> false" do
-      assert {:ok, [expr: "false", output: []]} = eval_expr("!true")
+      assert {:ok, expr: "false", output: []} = eval_expr("!true")
     end
 
     test "!false -> true" do
-      assert {:ok, [expr: "true", output: []]} = eval_expr("!false")
+      assert {:ok, expr: "true", output: []} = eval_expr("!false")
     end
 
     test "!nil -> true" do
-      assert {:ok, [expr: "true", output: []]} = eval_expr("!nil")
+      assert {:ok, expr: "true", output: []} = eval_expr("!nil")
     end
 
     property "!!number -> true" do
       check all(value <- number()) do
-        assert {:ok, [expr: "true", output: []]} = eval_expr("!!#{value}")
+        assert {:ok, expr: "true", output: []} = eval_expr("!!#{value}")
       end
     end
 
     property "!!string -> true" do
       check all(value <- literal(:string)) do
-        assert {:ok, [expr: "true", output: []]} = eval_expr("!!#{inspect(value)}")
+        assert {:ok, expr: "true", output: []} = eval_expr("!!#{inspect(value)}")
       end
     end
 
     test "!!true -> true" do
-      assert {:ok, [expr: "true", output: []]} = eval_expr("!!true")
+      assert {:ok, expr: "true", output: []} = eval_expr("!!true")
     end
 
     test "!!false -> false" do
-      assert {:ok, [expr: "false", output: []]} = eval_expr("!!false")
+      assert {:ok, expr: "false", output: []} = eval_expr("!!false")
     end
 
     test "!!nil -> false" do
-      assert {:ok, [expr: "false", output: []]} = eval_expr("!!nil")
+      assert {:ok, expr: "false", output: []} = eval_expr("!!nil")
+    end
+  end
+
+  describe "eval_expr/2: logical operations (and/or)" do
+    test "false and 3 -> false" do
+      assert {:ok, expr: "false", output: []} = eval_expr("false and 3")
+    end
+
+    test "false or 3 -> 3" do
+      assert {:ok, expr: "3", output: []} = eval_expr("false or 3")
+    end
+
+    test "false or nil or 3 -> 3" do
+      assert {:ok, expr: "3", output: []} = eval_expr("false or nil or 3")
+    end
+
+    test "false and nil or 3 -> false" do
+      assert {:ok, expr: "3", output: []} = eval_expr("false and nil or 3")
+    end
+
+    test "true or nil or 3 -> true" do
+      assert {:ok, expr: "true", output: []} = eval_expr("true or nil or 3")
+    end
+
+    test "true and nil or 3 -> nil" do
+      assert {:ok, expr: "3", output: []} = eval_expr("true and nil or 3")
+    end
+
+    test "true and !nil and 3 -> 3" do
+      assert {:ok, expr: "3", output: []} = eval_expr("true and !nil and 3")
     end
   end
 

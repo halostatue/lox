@@ -18,7 +18,15 @@ defmodule Ilox do
   `expr` → `t:literal_expr/0` | `t:unary_expr/0` | `t:binary_expr/0` | `t:group_expr/0`
   | `t:var_expr/0`
   """
-  @type expr :: binary_expr | group_expr | literal_expr | unary_expr | var_expr | assign_expr
+  @type expr ::
+          binary_expr
+          | group_expr
+          | literal_expr
+          | unary_expr
+          | var_expr
+          | assign_expr
+          | logic_or_expr
+          | logic_and_expr
 
   @typedoc section: :cfgrammar
   @typedoc """
@@ -82,9 +90,26 @@ defmodule Ilox do
   @typedoc """
   Variable assignment.
 
-  `assignment` → IDENTIFIER "=" assignment | equality ;
+  `assignment` → IDENTIFIER "=" assignment | logic_or ;
   """
   @type assign_expr :: {:assign_expr, identifier :: Token.t(), value :: expr}
+
+  @typedoc section: :cfgrammar
+  @typedoc """
+  Logical operators `and` and `or`.
+
+  `
+  `logic_or` → logic_and ( "or" logic_and )* ;
+  """
+  @type logic_or_expr :: {:logical_expr, left :: expr, operator :: Token.t(), right :: expr}
+
+  @typedoc section: :cfgrammar
+  @typedoc """
+  Logical and operator.
+
+  `logic_and` → equality ( "and" equality )* ;
+  """
+  @type logic_and_expr :: {:logical_expr, left :: expr, operator :: Token.t(), right :: expr}
 
   def run, do: run([])
 

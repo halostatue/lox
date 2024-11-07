@@ -74,10 +74,79 @@ defmodule Ilox.Token do
 
   def eof(line \\ 0), do: new(:eof, line, "")
 
+  @lookup %{
+    :left_paren => "(",
+    :right_paren => ")",
+    :left_brace => "{",
+    :right_brace => "}",
+    :comma => ",",
+    :dot => ".",
+    :minus => "-",
+    :plus => "+",
+    :semicolon => ";",
+    :slash => "/",
+    :star => "*",
+    :bang => "!",
+    :bang_equal => "!=",
+    :equal => "=",
+    :equal_equal => "==",
+    :greater => ">",
+    :greater_equal => ">=",
+    :less => "<",
+    :less_equal => "<=",
+    :and => "and",
+    :class => "class",
+    :else => "else",
+    :Qfalse => "false",
+    :fun => "fun",
+    :for => "for",
+    :if => "if",
+    :Qnil => "nil",
+    :or => "or",
+    :print => "print",
+    :return => "return",
+    :super => "super",
+    :this => "this",
+    :Qtrue => "true",
+    :var => "var",
+    :while => "while"
+  }
+
+  def inspect_tokens(input, opts \\ [])
+
+  def inspect_tokens({value, %{tokens: tokens} = ctx}, opts) do
+    IO.inspect({value, view(tokens)}, opts)
+
+    {value, ctx}
+  end
+
+  def inspect_tokens(%{tokens: tokens} = ctx, opts) do
+    tokens
+    |> view()
+    |> IO.inspect(opts)
+
+    ctx
+  end
+
+  def view(tokens) when is_list(tokens) do
+    tokens
+    |> Enum.map(&view/1)
+    |> Enum.join(" ")
+  end
+
+  # "Token.eof(#{line})"
+  def view(%{type: :eof}), do: "␄"
+  def view(%{type: :identifier, lexeme: lexeme}), do: lexeme
+  def view(%{type: :string, literal: literal}), do: inspect(literal)
+  def view(%{type: :number, literal: literal}), do: to_string(literal)
+
+  def view(%{type: type} = token) do
+    @lookup[type] || inspect(token)
+  end
+
   defimpl Inspect do
-    def inspect(%{type: :eof, line: line}, _opts) do
-      "Token.eof(#{line})"
-    end
+    # "Token.eof(#{line})"
+    def inspect(%{type: :eof, line: line}, _opts), do: "Token.eof(#{line})"
 
     def inspect(token, _opts) do
       params =
@@ -85,13 +154,5 @@ defmodule Ilox.Token do
 
       "Token.new(#{params})"
     end
-  end
-
-  def to_string(%__MODULE__{type: type, lexeme: lexeme, literal: literal, line: line}) do
-    "#{line}: #{type} \"#{lexeme}\" #{literal}"
-  end
-
-  defimpl String.Chars do
-    def to_string(%mod{} = value), do: mod.to_string(value)
   end
 end

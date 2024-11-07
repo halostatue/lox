@@ -410,7 +410,7 @@ defmodule Ilox.ParserStmtTest do
     end
   end
 
-  describe "parse/1: control flow" do
+  describe "parse/1: if statements" do
     test "if" do
       assert {:ok,
               [
@@ -430,7 +430,7 @@ defmodule Ilox.ParserStmtTest do
                  {:block, [{:print_stmt, {:literal_expr, %Token{type: :number}}}]}, nil}
               ]} =
                Parser.parse("""
-               if (1) { 
+               if (1) {
                  print 2;
                }
                """)
@@ -459,7 +459,7 @@ defmodule Ilox.ParserStmtTest do
                  {:block, [{:print_stmt, {:literal_expr, %Token{type: :number}}}]}}
               ]} =
                Parser.parse("""
-               if (1) { 
+               if (1) {
                  print 2;
                } else {
                  print 3;
@@ -546,6 +546,113 @@ defmodule Ilox.ParserStmtTest do
                  print 4;
                }
                """)
+    end
+  end
+
+  describe "parse/1: while statement" do
+    test "while" do
+      assert {:ok,
+              [
+                {:while_stmt, {:literal_expr, %Token{type: :number}},
+                 {:print_stmt, {:literal_expr, %Token{type: :number}}}}
+              ]} =
+               Parser.parse("""
+               while (1)
+                 print 2;
+               """)
+    end
+
+    test "while block" do
+      assert {:ok,
+              [
+                {:while_stmt, {:literal_expr, %Token{type: :number}},
+                 {:block, [{:print_stmt, {:literal_expr, %Token{type: :number}}}]}}
+              ]} =
+               Parser.parse("""
+               while (1) {
+                 print 2;
+               }
+               """)
+    end
+
+    test "nested while" do
+      assert {:ok,
+              [
+                {:while_stmt, {:literal_expr, %Token{type: :number}},
+                 {:while_stmt, {:literal_expr, %Token{type: :number}},
+                  {:print_stmt, {:literal_expr, %Token{type: :number}}}}}
+              ]} =
+               Parser.parse("""
+               while (1)
+                 while (2)
+                   print 2;
+               """)
+    end
+
+    test "nested while (block)" do
+      assert {:ok,
+              [
+                {:while_stmt, {:literal_expr, %Token{type: :number}},
+                 {:block,
+                  [
+                    {:while_stmt, {:literal_expr, %Token{type: :number}},
+                     {:block, [print_stmt: {:literal_expr, %Token{type: :number}}]}}
+                  ]}}
+              ]} =
+               Parser.parse("""
+               while (1) {
+                 while (2) {
+                   print 2;
+                 }
+               }
+               """)
+    end
+  end
+
+  describe "parse/1: for statement" do
+    test "for (;;) print 3;" do
+      assert {:ok, [{:while_stmt, {:literal_expr, true}, {:print_stmt, {:literal_expr, _}}}]} =
+               Parser.parse("for (;;) print 3;")
+    end
+
+    test "for (var a = 1; a > 0; a = a - 1) print a;" do
+      assert {:ok,
+              [
+                {:block,
+                 [
+                   {:var_decl, %Token{lexeme: "a"}, {:literal_expr, %Token{lexeme: "1"}}},
+                   {:while_stmt,
+                    {:binary_expr, {:var_expr, %Token{lexeme: "a"}}, %Token{type: :greater},
+                     {:literal_expr, %Token{lexeme: "0"}}},
+                    {:block,
+                     [
+                       {:print_stmt, {:var_expr, %Token{lexeme: "a"}}},
+                       {:assign_expr, %Token{lexeme: "a"},
+                        {:binary_expr, {:var_expr, %Token{lexeme: "a"}}, %Token{type: :minus},
+                         {:literal_expr, %Token{lexeme: "1"}}}}
+                     ]}}
+                 ]}
+              ]} = Parser.parse("for (var a = 1; a > 0; a = a - 1) print a;")
+    end
+
+    test "for (var a = 1; a > 0; a = a - 1) { print a; }" do
+      assert {:ok,
+              [
+                {:block,
+                 [
+                   {:var_decl, %Token{lexeme: "a"}, {:literal_expr, %Token{lexeme: "1"}}},
+                   {:while_stmt,
+                    {:binary_expr, {:var_expr, %Token{lexeme: "a"}}, %Token{type: :greater},
+                     {:literal_expr, %Token{lexeme: "0"}}},
+                    {:block,
+                     [
+                       {:print_stmt, {:var_expr, %Token{lexeme: "a"}}},
+                       {:assign_expr, %Token{lexeme: "a"},
+                        {:binary_expr, {:var_expr, %Token{lexeme: "a"}}, %Token{type: :minus},
+                         {:literal_expr, %Token{lexeme: "1"}}}}
+                     ]}}
+                 ]}
+              ]} = Parser.parse("for (var a = 1; a > 0; a = a - 1) { print a; }")
     end
   end
 end

@@ -132,6 +132,17 @@ defmodule Ilox.Interpreter do
     {env, handle_operator(operator, left, right, types)}
   end
 
+  defp handle_expression(env, {:logical_expr, left, %Token{type: operator}, right})
+       when operator in [:or, :and] do
+    {env, left} = handle_expression(env, left)
+
+    cond do
+      operator == :or and !!left -> {env, left}
+      operator == :and and !left -> {env, left}
+      true -> handle_expression(env, right)
+    end
+  end
+
   defp handle_expression(env, {:var_expr, name}), do: Env.get(env, name)
 
   defp handle_expression(env, {:var_decl, name, initializer}) do
@@ -170,6 +181,17 @@ defmodule Ilox.Interpreter do
     {env, value} = handle_expression(env, condition)
     {env, _value} = handle_expression(env, if(value, do: then_branch, else: else_branch))
     {env, nil}
+  end
+
+  defp handle_expression(env, {:while_stmt, condition, body} = while) do
+    {env, test} = handle_expression(env, condition)
+
+    if test do
+      {env, _result} = handle_expression(env, body)
+      handle_expression(env, while)
+    else
+      {env, nil}
+    end
   end
 
   # Comparison operators *must* be restricted to numbers, because all values in the BEAM

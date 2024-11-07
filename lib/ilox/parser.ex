@@ -13,7 +13,9 @@ defmodule Ilox.Parser do
 
   ```
   expression  →  assignment ;
-  assignment  →  IDENTIFIER "=" assignment | equality ;
+  assignment  →  IDENTIFIER "=" assignment | logic_or ;
+  logic_or    →  logic_and ( "or" logic_and )* ;
+  logic_and   →  equality ( "and" equality )* ;
   equality    →  comparison ( ( "!=" | "==" ) comparison )* ;
   comparison  →  term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
   term        →  factor ( ( "-" | "+" ) factor )* ;
@@ -26,8 +28,20 @@ defmodule Ilox.Parser do
               |  IDENTIFIER ;
   program     →  ( declaration )* ;
   declaration →  var_decl | statement ;
-  statement   →  expr_stmt | print_stmt | block | if_stmt;
+  statement   →  expr_stmt
+              | print_stmt
+              | block
+              | if_stmt
+              | while_stmt ;
   var_decl    →  "var" IDENTIFIER ( "=" expression )? ";" ;
+  if_stmt     →  "if" "(" expression ")" statement
+                 ( "else" statement )? ;
+  block       →  "{" declaration* "}" ;
+  print_stmt  →  "print" expression ";" ;
+  while_stmt  →  "while" "(" expression ")" statement ;
+  for_stmt    →  "for" "(" ( var_decl | expr_stmt | ";" ) expression? ";" expression? ")"
+                 statement ;
+  expr_stmt   →  expression ";" ;
   ```
   """
 
@@ -81,10 +95,41 @@ defmodule Ilox.Parser do
 
   @typedoc section: :pgrammar
   @typedoc """
-  A conditional with an expression and a statement executed when the expression is truthy.
-  It may optionally have a else statement executed when the expression is falsy.
+  A conditional flow control statement made with an expression and a statement executed
+  when the expression is truthy. It may optionally have a else statement executed when the
+  expression is falsy.
   """
   @type if_stmt :: {:if_stmt, expr :: Ilox.expr(), truthy :: statement, falsy :: nil | statement}
+
+  @typedoc section: :pgrammar
+  @typedoc """
+  A looping flow control statement that only executes if the expression is truthy.
+
+  Robert Nystrom has implemented `for` loops as a desugaring into a while loop, so we will
+  do the same.
+  """
+  @type while_stmt :: {:while_stmt, expr :: Ilox.expr(), body :: statement}
+
+  @typedoc section: :pgrammar
+  @typedoc """
+  A looping flow control statement with three optional clauses inside parentheses,
+  separated by semicolons and a body after the closing parenthesis.
+
+  1. The _initializer_, executed exactly once before the loop starts. This may be an
+     expression or a variable declaration. If there is a variable declaration, the
+     variable is scoped to the for loop clauses and body.
+
+  2. The _condition_, which controls when to exit the loop, evaluated at the beginning of
+     each iteration. The body is executed if the condition is true.
+
+  3. The _increment_, an arbitrary expression whose result is discarded. It must have
+     a side effect to be useful (usually incrementing a variable).
+
+  This will be desugared into a `while `loop.
+  """
+  @type for_stmt ::
+          {:for_stmt, initializer :: var_decl | expr_stmt | nil, condition :: Ilox.expr() | nil,
+           increment :: Ilox.expr() | nil, body :: statement}
 
   @spec parse(tokens :: String.t() | list(Token.t())) :: list(program)
   def parse(source) when is_binary(source) do
@@ -185,6 +230,12 @@ defmodule Ilox.Parser do
   defp handle_statement(%{tokens: [%Token{type: :if} | tokens]} = ctx),
     do: handle_if_statement(%{ctx | tokens: tokens})
 
+  defp handle_statement(%{tokens: [%Token{type: :while} | tokens]} = ctx),
+    do: handle_while_statement(%{ctx | tokens: tokens})
+
+  defp handle_statement(%{tokens: [%Token{type: :for} | tokens]} = ctx),
+    do: handle_for_statement(%{ctx | tokens: tokens})
+
   defp handle_statement(ctx) do
     {expr, ctx} = handle_expression(ctx)
     {_, ctx} = expect_semicolon(ctx, "expression")
@@ -213,6 +264,73 @@ defmodule Ilox.Parser do
       end
 
     add_statement(ctx, {:if_stmt, condition, then_branch, else_branch})
+  end
+
+  defp handle_while_statement(ctx) do
+    {_, ctx} = expect(ctx, :left_paren, "Expect '(' after 'while'.")
+    {condition, ctx} = handle_expression(ctx)
+    {_, ctx} = expect(ctx, :right_paren, "Expect ')' after 'while' condition.")
+
+    {body, ctx} = handle_nested_statement(ctx)
+
+    add_statement(ctx, {:while_stmt, condition, body})
+  end
+
+  defp handle_for_statement(ctx) do
+    {_, %{tokens: [next | tokens]} = ctx} = expect(ctx, :left_paren, "Expect '(' after 'for'.")
+
+    {initializer, %{tokens: [next | _]} = ctx} =
+      cond do
+        type_match(next, :semicolon) ->
+          {nil, %{ctx | tokens: tokens}}
+
+        type_match(next, :var) ->
+          %{statements: [head | rest]} =
+            ctx = handle_var_declaration(%{ctx | tokens: tokens, break: ctx.break + 1})
+
+          {head, %{ctx | statements: rest}}
+
+        true ->
+          handle_expression(ctx)
+      end
+
+    {condition, ctx} =
+      if type_match(next, :semicolon) do
+        {{:literal_expr, true}, ctx}
+      else
+        handle_expression(%{ctx | break: ctx.break + 1})
+      end
+
+    {_, %{tokens: [next | _]} = ctx} = expect_semicolon(ctx, "loop condition")
+
+    {increment, ctx} =
+      if type_match(next, :right_paren) do
+        {nil, ctx}
+      else
+        handle_expression(ctx)
+      end
+
+    {_, ctx} = expect(ctx, :right_paren, "Expect ')' after 'for' clauses.")
+
+    {body, ctx} = handle_nested_statement(ctx)
+
+    body =
+      case body do
+        _ when is_nil(increment) -> body
+        {:block, statements} -> {:block, statements ++ [increment]}
+        statement -> {:block, [statement, increment]}
+      end
+
+    body = {:while_stmt, condition, body}
+
+    body =
+      if is_nil(initializer) do
+        body
+      else
+        {:block, [initializer, body]}
+      end
+
+    add_statement(ctx, body)
   end
 
   # Nested statement handling is required for flow control, where an execution branch may
@@ -273,7 +391,7 @@ defmodule Ilox.Parser do
   defp handle_expression(ctx), do: handle_assignment(ctx)
 
   defp handle_assignment(ctx) do
-    {expr, %{tokens: [head | _]} = ctx} = handle_equality(ctx)
+    {expr, %{tokens: [head | _]} = ctx} = handle_or(ctx)
 
     if type_match(head, :equal) do
       {equals, ctx} = handle_advance(ctx)
@@ -292,6 +410,16 @@ defmodule Ilox.Parser do
     else
       {expr, ctx}
     end
+  end
+
+  defp handle_or(ctx) do
+    {expr, ctx} = handle_and(ctx)
+    handle_binary_match(ctx, expr, [:or], &handle_and/1, :logical_expr)
+  end
+
+  defp handle_and(ctx) do
+    {expr, ctx} = handle_equality(ctx)
+    handle_binary_match(ctx, expr, [:and], &handle_equality/1, :logical_expr)
   end
 
   defp handle_equality(ctx) do
@@ -390,7 +518,13 @@ defmodule Ilox.Parser do
   defp handle_binary_match(%{tokens: [%Token{type: :eof} | _]} = ctx, expr, _types, _consumer),
     do: {expr, ctx}
 
-  defp handle_binary_match(%{tokens: [current | _]} = ctx, expr, types, consumer) do
+  defp handle_binary_match(
+         %{tokens: [current | _]} = ctx,
+         expr,
+         types,
+         consumer,
+         expr_type \\ :binary_expr
+       ) do
     if type_match(current, types) do
       {operator, ctx} = handle_advance(ctx)
 
@@ -403,8 +537,8 @@ defmodule Ilox.Parser do
             ctx: ctx
 
         {right, ctx} ->
-          expr = {:binary_expr, expr, operator, right}
-          handle_binary_match(ctx, expr, types, consumer)
+          expr = {expr_type, expr, operator, right}
+          handle_binary_match(ctx, expr, types, consumer, expr_type)
       end
     else
       {expr, ctx}

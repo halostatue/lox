@@ -246,4 +246,16 @@ defmodule Ilox.ParserExprTest do
       end
     end
   end
+
+  describe "parse_expr/1: logical expressions" do
+    test "left or right" do
+      assert {:ok, {:logical_expr, {:var_expr, _}, %Token{type: :or}, {:var_expr, _}}} =
+               Parser.parse_expr("left or right")
+    end
+
+    test "left and right" do
+      assert {:ok, {:logical_expr, {:var_expr, _}, %Token{type: :and}, {:var_expr, _}}} =
+               Parser.parse_expr("left and right")
+    end
+  end
 end
