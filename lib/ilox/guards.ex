@@ -10,4 +10,6 @@ defmodule Ilox.Guards do
   defguard is_alphanumeric(c) when is_digit(c) or is_alpha(c)
 
   defguard is_whitespace(c) when c in ["\r", "\s", "\t"]
+
+  defguard is_callable(v) when is_struct(v, Ilox.Callable)
 end

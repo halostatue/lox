@@ -277,6 +277,17 @@ defmodule Ilox.InterpreterTest do
     end
   end
 
+  describe "run/2: function calls" do
+    test "print clock;" do
+      assert {:ok, output: ["<native fn>"]} = run("print clock;")
+    end
+
+    test "print clock();" do
+      assert {:ok, output: [output]} = run("print clock();")
+      assert output =~ ~r/^-?\d+$/
+    end
+  end
+
   defp run(source, replacements \\ []) do
     case Interpreter.run(env(), __replace(source, replacements)) do
       :ok ->

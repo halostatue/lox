@@ -7,14 +7,17 @@ defmodule Ilox.Interpreter do
   @moduledoc """
   The expression interpreter for ilox.
   """
+  alias Ilox.Callable
   alias Ilox.Env
   alias Ilox.Errors
   alias Ilox.Parser
   alias Ilox.Token
 
+  import Ilox.Guards
+
   @spec run(Env.t(), String.t() | list(Token.t()) | Ilox.Parser.program()) ::
           :ok | {:error, atom(), String.t()}
-  def run(env \\ Env.new(), input)
+  def run(env \\ nil, input)
 
   def run(env, source) when is_binary(source) do
     case Parser.parse(source) do
@@ -31,6 +34,7 @@ defmodule Ilox.Interpreter do
   end
 
   def run(env, [head | _] = statements) when is_tuple(head) do
+    env = define_globals(env)
     _env = handle_statements(env, statements)
     :ok
   rescue
@@ -194,6 +198,31 @@ defmodule Ilox.Interpreter do
     end
   end
 
+  defp handle_expression(env, {:call, callee, arguments, argc, closing}) do
+    {env, callee} = handle_expression(env, callee)
+
+    if !is_callable(callee) do
+      raise Ilox.RuntimeError, token: closing, message: "Can only call functions and classes."
+    end
+
+    if callee.arity != argc do
+      raise Ilox.RuntimeError,
+        token: closing,
+        message: "Expected #{callee.arity} arguments but got #{argc}."
+    end
+
+    {env, arguments} =
+      Enum.reduce(arguments, {env, []}, fn arg, {env, args} ->
+        {env, arg} = handle_expression(env, arg)
+        {env, [arg | args]}
+      end)
+
+    arguments = Enum.reverse(arguments)
+
+    {env, result} = Callable.call(callee, env, arguments)
+    {env, result}
+  end
+
   # Comparison operators *must* be restricted to numbers, because all values in the BEAM
   # are comparables.
   defp handle_operator(%Token{type: :minus}, left, right, :number), do: left - right
@@ -223,4 +252,16 @@ defmodule Ilox.Interpreter do
 
   defp invalid_operands!(token),
     do: [token: token, message: "Operands must be numbers.", where: Errors.where(token)]
+
+  defp define_globals(env) do
+    env = env || Env.new()
+
+    if !Env.__defined?(env, "clock") do
+      clock = Callable.__native(0, fn env, _ -> {env, System.monotonic_time(:second) / 1} end)
+      {env, _} = Env.__define(env, "clock", clock)
+      env
+    else
+      env
+    end
+  end
 end

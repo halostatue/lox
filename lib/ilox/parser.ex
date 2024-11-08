@@ -4,6 +4,8 @@ defmodule Ilox.ParserError do
 end
 
 defmodule Ilox.Parser do
+  # import Ilox.Token, only: [inspect_tokens: 1, inspect_tokens: 2]
+
   @moduledoc """
   The parser adapts the `m:Ilox#context-free-grammar` into one that encodes its precedence
   rules. The parser produces an AST that is a mix of the context free grammar for
@@ -20,12 +22,14 @@ defmodule Ilox.Parser do
   comparison  →  term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
   term        →  factor ( ( "-" | "+" ) factor )* ;
   factor      →  unary ( ( "/" | "*" ) unary )* ;
-  unary       →  ( ( "!" | "-" ) unary ) | primary ;
+  unary       →  ( ( "!" | "-" ) unary ) | call ;
+  call        →  primary  ( "(" arguments? ")" )* ;
   variable    →  IDENTIFIER ;
   primary     →  "true" | "false" | "nil"
               |  NUMBER | STRING
               |  "(" expression ")"
               |  IDENTIFIER ;
+  arguments   →  expression ( "," expression )* ;
   program     →  ( declaration )* ;
   declaration →  var_decl | statement ;
   statement   →  expr_stmt
@@ -125,11 +129,22 @@ defmodule Ilox.Parser do
   3. The _increment_, an arbitrary expression whose result is discarded. It must have
      a side effect to be useful (usually incrementing a variable).
 
-  This will be desugared into a `while `loop.
+  This will be desugared into a `while` loop.
   """
   @type for_stmt ::
           {:for_stmt, initializer :: var_decl | expr_stmt | nil, condition :: Ilox.expr() | nil,
            increment :: Ilox.expr() | nil, body :: statement}
+
+  @typedoc section: :pgrammar
+  @typedoc """
+  A function call expression.
+
+  This stores the closing parenthesis token to use the location to report errors on
+  function call.
+  """
+  @type call ::
+          {:call, callee :: Ilox.expr(), arguments :: list(Ilox.expr()),
+           argc :: non_neg_integer(), closing :: Token.t()}
 
   @spec parse(tokens :: String.t() | list(Token.t())) :: list(program)
   def parse(source) when is_binary(source) do
@@ -150,11 +165,15 @@ defmodule Ilox.Parser do
   end
 
   def parse_expr(tokens) do
-    {expr, _tokens} = handle_expression(%{tokens: tokens})
-    {:ok, expr}
+    {expr, ctx} = handle_expression(%{errors: [], tokens: tokens})
+
+    case ctx do
+      %{errors: [_ | _]} -> {:error, :parser, Enum.reverse(ctx.errors)}
+      _ -> {:ok, expr}
+    end
   rescue
     e in Ilox.ParserError ->
-      {:error, :parser, Exception.message(e)}
+      {:error, :parser, [Exception.message(e)]}
   end
 
   defp handle_program(tokens) when is_list(tokens) do
@@ -162,7 +181,7 @@ defmodule Ilox.Parser do
 
     case handle_program(ctx) do
       %{errors: [], statements: []} ->
-        raise "This should be unreachable. No errors and no statements returned."
+        raise "Invalid state: no errors and no statements."
 
       %{errors: [_ | _] = errors} ->
         {:error, :parser, Enum.reverse(errors)}
@@ -202,10 +221,11 @@ defmodule Ilox.Parser do
   end
 
   defp handle_var_declaration(ctx) do
-    {name, %{tokens: [next | tokens]} = ctx} = expect(ctx, :identifier, "Expect variable name.")
+    {name, %{tokens: [current | tokens]} = ctx} =
+      expect(ctx, :identifier, "Expect variable name.")
 
     {initializer, ctx} =
-      if type_match(next, :equal) do
+      if type_match(current, :equal) do
         handle_expression(%{ctx | tokens: tokens})
       else
         {nil, ctx}
@@ -253,11 +273,11 @@ defmodule Ilox.Parser do
     {condition, ctx} = handle_expression(ctx)
     {_, ctx} = expect(ctx, :right_paren, "Expect ')' after 'if' condition.")
 
-    {then_branch, %{tokens: [head | _]} = ctx} = handle_nested_statement(ctx)
+    {then_branch, %{tokens: [current | _]} = ctx} = handle_nested_statement(ctx)
 
     {else_branch, ctx} =
-      if type_match(head, :else) do
-        {_, ctx} = handle_advance(ctx)
+      if type_match(current, :else) do
+        {_, ctx} = skip_token(ctx)
         handle_nested_statement(ctx)
       else
         {nil, ctx}
@@ -277,34 +297,34 @@ defmodule Ilox.Parser do
   end
 
   defp handle_for_statement(ctx) do
-    {_, %{tokens: [next | tokens]} = ctx} = expect(ctx, :left_paren, "Expect '(' after 'for'.")
+    {_, %{tokens: [current | tokens]} = ctx} = expect(ctx, :left_paren, "Expect '(' after 'for'.")
 
-    {initializer, %{tokens: [next | _]} = ctx} =
+    {initializer, %{tokens: [current | _]} = ctx} =
       cond do
-        type_match(next, :semicolon) ->
+        type_match(current, :semicolon) ->
           {nil, %{ctx | tokens: tokens}}
 
-        type_match(next, :var) ->
-          %{statements: [head | rest]} =
+        type_match(current, :var) ->
+          %{statements: [current | statements]} =
             ctx = handle_var_declaration(%{ctx | tokens: tokens, break: ctx.break + 1})
 
-          {head, %{ctx | statements: rest}}
+          {current, %{ctx | statements: statements}}
 
         true ->
           handle_expression(ctx)
       end
 
     {condition, ctx} =
-      if type_match(next, :semicolon) do
+      if type_match(current, :semicolon) do
         {{:literal_expr, true}, ctx}
       else
         handle_expression(%{ctx | break: ctx.break + 1})
       end
 
-    {_, %{tokens: [next | _]} = ctx} = expect_semicolon(ctx, "loop condition")
+    {_, %{tokens: [current | _]} = ctx} = expect_semicolon(ctx, "loop condition")
 
     {increment, ctx} =
-      if type_match(next, :right_paren) do
+      if type_match(current, :right_paren) do
         {nil, ctx}
       else
         handle_expression(ctx)
@@ -347,8 +367,8 @@ defmodule Ilox.Parser do
   #
   # We set `break: true` before calling `handle_statement/1` so that we don't recurse back
   defp handle_nested_statement(ctx) do
-    %{statements: [head | rest]} = ctx = handle_statement(%{ctx | break: ctx.break + 1})
-    {head, %{ctx | statements: rest}}
+    %{statements: [current | statements]} = ctx = handle_statement(%{ctx | break: ctx.break + 1})
+    {current, %{ctx | statements: statements}}
   end
 
   # For block handling, We need to explicitly recognize the outer and inner contexts,
@@ -391,10 +411,10 @@ defmodule Ilox.Parser do
   defp handle_expression(ctx), do: handle_assignment(ctx)
 
   defp handle_assignment(ctx) do
-    {expr, %{tokens: [head | _]} = ctx} = handle_or(ctx)
+    {expr, %{tokens: [current | _]} = ctx} = handle_or(ctx)
 
-    if type_match(head, :equal) do
-      {equals, ctx} = handle_advance(ctx)
+    if type_match(current, :equal) do
+      {equals, ctx} = skip_token(ctx)
       {value, ctx} = handle_assignment(ctx)
 
       case expr do
@@ -453,7 +473,7 @@ defmodule Ilox.Parser do
 
   defp handle_unary(%{tokens: [current | _]} = ctx) do
     if type_match(current, [:bang, :minus]) do
-      {operator, ctx} = handle_advance(ctx)
+      {operator, ctx} = skip_token(ctx)
 
       case handle_unary(ctx) do
         {nil, ctx} ->
@@ -467,7 +487,68 @@ defmodule Ilox.Parser do
           {{:unary_expr, operator, right}, ctx}
       end
     else
-      handle_primary(ctx)
+      handle_call(ctx)
+    end
+  end
+
+  defp handle_call(%{tokens: []} = ctx), do: {nil, ctx}
+  defp handle_call(%{tokens: [%Token{type: :eof} | _]} = ctx), do: {nil, ctx}
+
+  defp handle_call(ctx) do
+    {expr, %{tokens: [current | tokens]} = ctx} = handle_primary(ctx)
+
+    if type_match(current, :left_paren) do
+      handle_call(%{ctx | tokens: tokens}, expr)
+    else
+      {expr, ctx}
+    end
+  end
+
+  defp handle_call(ctx, callee) do
+    {args, ctx} = handle_call_args(ctx)
+
+    {closing, %{tokens: [current | tokens]} = ctx} =
+      expect(ctx, :right_paren, "Expect ')' after arguments.")
+
+    count = Enum.count(args)
+
+    ctx =
+      if count > 255 do
+        %{
+          ctx
+          | errors: [
+              Errors.format(%{token: closing, message: "Can't have more than 255 arguments."})
+              | ctx.errors
+            ]
+        }
+      else
+        ctx
+      end
+
+    call = {:call, callee, args, count, closing}
+
+    if type_match(current, :left_paren) do
+      handle_call(%{ctx | tokens: tokens}, call)
+    else
+      {call, ctx}
+    end
+  end
+
+  defp handle_call_args(%{tokens: []} = ctx), do: {[], ctx}
+  defp handle_call_args(%{tokens: [%Token{type: :eof} | _]} = ctx), do: {[], ctx}
+  defp handle_call_args(ctx), do: handle_call_args(ctx, [])
+
+  defp handle_call_args(%{tokens: [%Token{type: :right_paren} | _]} = ctx, args),
+    do: {Enum.reverse(args), ctx}
+
+  defp handle_call_args(ctx, args) do
+    {arg, %{tokens: [current | tokens]} = ctx} = handle_expression(ctx)
+    args = [arg | args]
+
+    if type_match(current, :comma) do
+      handle_call_args(%{ctx | tokens: tokens}, args)
+    else
+      {Enum.reverse(args), ctx}
     end
   end
 
@@ -526,7 +607,7 @@ defmodule Ilox.Parser do
          expr_type \\ :binary_expr
        ) do
     if type_match(current, types) do
-      {operator, ctx} = handle_advance(ctx)
+      {operator, ctx} = skip_token(ctx)
 
       case consumer.(ctx) do
         {nil, ctx} ->
@@ -552,7 +633,7 @@ defmodule Ilox.Parser do
     do: handle_declaration(%{ctx | statements: [statement | ctx.statements]})
 
   defp synchronize(ctx) do
-    case handle_advance(ctx) do
+    case skip_token(ctx) do
       {nil, ctx} ->
         ctx
 
@@ -571,13 +652,13 @@ defmodule Ilox.Parser do
   defp type_match(%Token{type: type}, type), do: true
   defp type_match(%Token{}, _type), do: false
 
-  defp handle_advance(%{tokens: []} = ctx), do: {nil, ctx}
+  defp skip_token(%{tokens: []} = ctx), do: {nil, ctx}
 
-  defp handle_advance(%{tokens: [%Token{} = previous, %Token{type: :eof} | _]} = ctx),
+  defp skip_token(%{tokens: [%Token{} = previous, %Token{type: :eof} | _]} = ctx),
     do: {previous, %{ctx | tokens: [Token.eof(previous.line)]}}
 
-  defp handle_advance(%{tokens: [%Token{type: :eof} | _]} = ctx), do: {nil, ctx}
+  defp skip_token(%{tokens: [%Token{type: :eof} | _]} = ctx), do: {nil, ctx}
 
-  defp handle_advance(%{tokens: [%Token{} = previous | tokens]} = ctx),
+  defp skip_token(%{tokens: [%Token{} = previous | tokens]} = ctx),
     do: {previous, %{ctx | tokens: tokens}}
 end

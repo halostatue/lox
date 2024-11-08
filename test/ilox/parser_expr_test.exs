@@ -258,4 +258,72 @@ defmodule Ilox.ParserExprTest do
                Parser.parse_expr("left and right")
     end
   end
+
+  describe "parse_expr/1: function calls" do
+    test "fn()" do
+      assert {:ok, {:call, {:var_expr, %Token{lexeme: "fn"}}, [], 0, %Token{type: :right_paren}}} =
+               Parser.parse_expr("fn()")
+    end
+
+    test "fn()()()" do
+      assert {:ok,
+              {:call,
+               {:call,
+                {:call, {:var_expr, %Token{lexeme: "fn"}}, [], 0, %Token{type: :right_paren}}, [],
+                0, %Token{type: :right_paren}}, [], 0,
+               %Token{type: :right_paren}}} =
+               Parser.parse_expr("fn()()()")
+    end
+
+    @tag :skip
+    test "fn()())()" do
+      # This should not be passing because there's an extra closing parenthesis that
+      # should halt parsing.
+      assert {:ok,
+              {:call,
+               {:call,
+                {:call, {:var_expr, %Token{lexeme: "fn"}}, [], 0, %Token{type: :right_paren}}, [],
+                %Token{type: :right_paren}}, [],
+               %Token{type: :right_paren}}} =
+               Parser.parse_expr("fn()())()")
+    end
+
+    test "fn(1)" do
+      assert {:ok,
+              {:call, {:var_expr, %Token{lexeme: "fn"}}, [{:literal_expr, %Token{literal: 1.0}}],
+               1,
+               %Token{type: :right_paren}}} =
+               Parser.parse_expr("fn(1)")
+    end
+
+    test "fn(1, 2, 3)" do
+      assert {:ok,
+              {:call, {:var_expr, %Token{lexeme: "fn"}},
+               [
+                 {:literal_expr, %Token{literal: 1.0}},
+                 {:literal_expr, %Token{literal: 2.0}},
+                 {:literal_expr, %Token{literal: 3.0}}
+               ], 3,
+               %Token{type: :right_paren}}} =
+               Parser.parse_expr("fn(1, 2, 3)")
+    end
+
+    test "fn(256-args)" do
+      args = Enum.join(1..256, ", ")
+
+      assert {:error, :parser, ["[line 1] Error: Can't have more than 255 arguments."]} =
+               Parser.parse_expr("fn(#{args})")
+    end
+
+    test "fn(1,)" do
+      # This should *probably* be a parsing error, but making that work with the Elixir
+      # parser is likely to have some issues. For now, we are leaving it as a successful
+      # parse.
+      assert {:ok,
+              {:call, {:var_expr, %Token{lexeme: "fn"}}, [{:literal_expr, %Token{literal: 1.0}}],
+               1,
+               %Token{type: :right_paren}}} =
+               Parser.parse_expr("fn(1,)")
+    end
+  end
 end
