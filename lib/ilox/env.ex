@@ -3,6 +3,7 @@ defmodule Ilox.Env do
   An environment for storing variables in a scope.
   """
 
+  alias Ilox.Callable
   alias Ilox.Token
 
   @type t :: %__MODULE__{
@@ -71,7 +72,7 @@ defmodule Ilox.Env do
   end
 
   @doc """
-  Retrieve the valuefrom the defined variable.
+  Retrieve the value from the defined variable.
   """
   def get(%__MODULE__{} = env, %Token{type: :identifier, lexeme: name} = id) do
     case env do
@@ -87,9 +88,15 @@ defmodule Ilox.Env do
     end
   end
 
+  @doc """
+  Returns the root environment, the "globals".
+  """
+  def globals(%__MODULE__{enclosing: nil} = env), do: env
+  def globals(%__MODULE__{enclosing: %__MODULE__{} = parent}), do: globals(parent)
+
   @doc false
   def __define(%__MODULE__{} = env, name, value) do
-    assign_value(env, name, value)
+    elem(assign_value(env, name, value), 0)
   end
 
   @doc false
@@ -104,6 +111,42 @@ defmodule Ilox.Env do
       _ ->
         false
     end
+  end
+
+  @doc false
+  def __prepend_globals, do: define_globals([])
+  def __prepend_globals(%__MODULE__{} = env), do: __prepend_globals(env, define_globals([]))
+
+  def __prepend_globals(globals_options) when is_list(globals_options),
+    do: define_globals(globals_options)
+
+  def __prepend_globals(%__MODULE__{} = env, globals_options) when is_list(globals_options),
+    do: __prepend_globals(env, define_globals(globals_options))
+
+  def __prepend_globals(
+        %__MODULE__{} = env,
+        %__MODULE__{enclosing: nil} = globals
+      ) do
+    enclosing =
+      if env.enclosing do
+        __prepend_globals(env.enclosing, globals)
+      else
+        globals
+      end
+
+    print =
+      if env.print != enclosing.print && enclosing.print != (&IO.puts/1) do
+        enclosing.print
+      else
+        env.print
+      end
+
+    %{env | enclosing: enclosing, print: print}
+  end
+
+  defp define_globals(globals_options) do
+    clock = Callable.__native(0, fn env, _ -> {env, System.monotonic_time(:second) / 1} end)
+    __define(new(globals_options), "clock", clock)
   end
 
   defp undefined_variable(%Token{} = name),

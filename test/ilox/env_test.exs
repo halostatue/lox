@@ -1,6 +1,7 @@
 defmodule Ilox.EnvTest do
   use ExUnit.Case, async: true
 
+  alias Ilox.Callable
   alias Ilox.Env
   alias Ilox.Token
 
@@ -41,8 +42,6 @@ defmodule Ilox.EnvTest do
       assert %Env{values: %{}, enclosing: base, print: &IO.puts/1} ==
                Env.new(enclosing: base, print: &IO.puts/1)
     end
-
-    defp fake_print(v), do: v
   end
 
   describe "define/3" do
@@ -153,5 +152,76 @@ defmodule Ilox.EnvTest do
     end
   end
 
+  describe "globals/1 and __prepend_globals/{0-2}" do
+    test "__prepend_globals/0 returns a global environment" do
+      assert %Env{values: %{"clock" => %Callable{}}, enclosing: nil} = Env.__prepend_globals()
+    end
+
+    test "__prepend_globals/1 wraps a global environment around the provided env" do
+      base = Env.new(print: &fake_print/1)
+      env = Env.__prepend_globals(base)
+
+      assert %{} == env.values
+      assert %{"clock" => %Callable{}} = env.enclosing.values
+      assert env.print != env.enclosing.print
+      assert env.print == (&fake_print/1)
+      assert env.enclosing.print == (&IO.puts/1)
+    end
+
+    test "__prepend_globals/2 with options makes a custom global environment" do
+      base = Env.new()
+      env = Env.__prepend_globals(base, print: &fake_print/1)
+
+      assert %{} == env.values
+      assert %{"clock" => %Callable{}} = env.enclosing.values
+      assert env.print == env.enclosing.print
+      assert env.print == (&fake_print/1)
+      assert env.enclosing.print == (&fake_print/1)
+    end
+
+    test "__prepend_globals works regardless of nesting depth" do
+      fp = &fake_print/1
+
+      assert %Env{
+               enclosing: %Env{
+                 enclosing: %Env{
+                   enclosing: %Env{
+                     enclosing: nil,
+                     print: ^fp,
+                     values: %{"clock" => %Callable{}}
+                   },
+                   print: ^fp,
+                   values: %{"inner" => 1}
+                 },
+                 print: ^fp,
+                 values: %{"middle" => 2}
+               },
+               print: ^fp,
+               values: %{"outer" => 3}
+             } =
+               Env.new()
+               |> Env.__define("inner", 1)
+               |> Env.new()
+               |> Env.__define("middle", 2)
+               |> Env.new()
+               |> Env.__define("outer", 3)
+               |> Env.__prepend_globals(print: fp)
+    end
+
+    test "globals/1 returns the root environment" do
+      env =
+        Env.new()
+        |> Env.__define("inner", 1)
+        |> Env.new()
+        |> Env.__define("middle", 2)
+        |> Env.new()
+        |> Env.__define("outer", 3)
+        |> Env.__prepend_globals()
+
+      assert env.enclosing.enclosing.enclosing == Env.globals(env)
+    end
+  end
+
   defp var(name, line \\ 1), do: Token.new(:identifier, line, name)
+  defp fake_print(v), do: v
 end

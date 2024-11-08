@@ -34,8 +34,10 @@ defmodule Ilox.Interpreter do
   end
 
   def run(env, [head | _] = statements) when is_tuple(head) do
-    env = define_globals(env)
-    _env = handle_statements(env, statements)
+    env
+    |> define_globals()
+    |> handle_statements(statements)
+
     :ok
   rescue
     e in Ilox.RuntimeError ->
@@ -253,15 +255,5 @@ defmodule Ilox.Interpreter do
   defp invalid_operands!(token),
     do: [token: token, message: "Operands must be numbers.", where: Errors.where(token)]
 
-  defp define_globals(env) do
-    env = env || Env.new()
-
-    if !Env.__defined?(env, "clock") do
-      clock = Callable.__native(0, fn env, _ -> {env, System.monotonic_time(:second) / 1} end)
-      {env, _} = Env.__define(env, "clock", clock)
-      env
-    else
-      env
-    end
-  end
+  defp define_globals(env), do: Env.__prepend_globals(env)
 end
