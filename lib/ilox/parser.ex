@@ -36,6 +36,7 @@ defmodule Ilox.Parser do
               | print_stmt
               | block
               | if_stmt
+              | return_stmt
               | while_stmt ;
   fun_decl    →  "fun" function ;
   function    →  IDENTIFIER "(" parameters? ")" block ;
@@ -48,6 +49,7 @@ defmodule Ilox.Parser do
   while_stmt  →  "while" "(" expression ")" statement ;
   for_stmt    →  "for" "(" ( var_decl | expr_stmt | ";" ) expression? ";" expression? ")"
                  statement ;
+  return_stmt →  "return" expression? ";" ;
   expr_stmt   →  expression ";" ;
   ```
   """
@@ -87,7 +89,7 @@ defmodule Ilox.Parser do
   Supported program statements. All statement types, except blocks, require a terminal
   semicolon (`;`) to be valid.
   """
-  @type statement :: expr_stmt | print_stmt | block | if_stmt
+  @type statement :: expr_stmt | print_stmt | block | if_stmt | while_stmt | return_stmt
 
   @typedoc section: :pgrammar
   @typedoc """
@@ -145,6 +147,13 @@ defmodule Ilox.Parser do
   @type for_stmt ::
           {:for_stmt, initializer :: var_decl | expr_stmt | nil, condition :: Ilox.expr() | nil,
            increment :: Ilox.expr() | nil, body :: statement}
+
+  @typedoc section: :pgrammar
+  @typedoc """
+  Breaks the execution of a function and returns the result of the expression. If the
+  expression is omitted, a `nil` value is returned.
+  """
+  @type return_stmt :: {:return_stmt, keyword :: Token.t(), value :: nil | Ilox.expr()}
 
   @typedoc section: :pgrammar
   @typedoc """
@@ -257,6 +266,7 @@ defmodule Ilox.Parser do
     kind = @callable_types[type]
 
     {name, ctx} = expect_identifier(ctx, kind)
+
     {_, ctx} = expect_left_paren(ctx, kind)
     {params, %{tokens: [current | _]} = ctx} = handle_decl_params(ctx)
 
@@ -310,10 +320,28 @@ defmodule Ilox.Parser do
   defp handle_statement(%{tokens: [%Token{type: :for} | tokens]} = ctx),
     do: handle_for_statement(%{ctx | tokens: tokens})
 
+  defp handle_statement(%{tokens: [%Token{type: :return} | _]} = ctx),
+    do: handle_return_statment(ctx)
+
   defp handle_statement(ctx) do
     {expr, ctx} = handle_expression(ctx)
     {_, ctx} = expect_semicolon(ctx, "expression")
     add_statement(ctx, {:expr_stmt, expr})
+  end
+
+  defp handle_return_statment(ctx) do
+    {keyword, %{tokens: [current | _]} = ctx} = next_token(ctx)
+
+    {value, ctx} =
+      if type_match(current, :semicolon) do
+        {nil, ctx}
+      else
+        handle_expression(ctx)
+      end
+
+    {_, ctx} = expect_semicolon(ctx, "return value")
+
+    add_statement(ctx, {:return_stmt, keyword, value})
   end
 
   defp handle_print_statement(ctx) do
@@ -331,7 +359,7 @@ defmodule Ilox.Parser do
 
     {else_branch, ctx} =
       if type_match(current, :else) do
-        {_, ctx} = skip_token(ctx)
+        {_, ctx} = next_token(ctx)
         handle_nested_statement(ctx)
       else
         {nil, ctx}
@@ -468,7 +496,7 @@ defmodule Ilox.Parser do
     {expr, %{tokens: [current | _]} = ctx} = handle_or(ctx)
 
     if type_match(current, :equal) do
-      {equals, ctx} = skip_token(ctx)
+      {equals, ctx} = next_token(ctx)
       {value, ctx} = handle_assignment(ctx)
 
       case expr do
@@ -527,7 +555,7 @@ defmodule Ilox.Parser do
 
   defp handle_unary(%{tokens: [current | _]} = ctx) do
     if type_match(current, [:bang, :minus]) do
-      {operator, ctx} = skip_token(ctx)
+      {operator, ctx} = next_token(ctx)
 
       case handle_unary(ctx) do
         {nil, ctx} ->
@@ -656,7 +684,7 @@ defmodule Ilox.Parser do
          expr_type \\ :binary_expr
        ) do
     if type_match(current, types) do
-      {operator, ctx} = skip_token(ctx)
+      {operator, ctx} = next_token(ctx)
 
       case consumer.(ctx) do
         {nil, ctx} ->
@@ -682,7 +710,7 @@ defmodule Ilox.Parser do
     do: handle_declaration(%{ctx | statements: [statement | ctx.statements]})
 
   defp synchronize(ctx) do
-    case skip_token(ctx) do
+    case next_token(ctx) do
       {nil, ctx} ->
         ctx
 
@@ -701,13 +729,13 @@ defmodule Ilox.Parser do
   defp type_match(%Token{type: type}, type), do: true
   defp type_match(%Token{}, _type), do: false
 
-  defp skip_token(%{tokens: []} = ctx), do: {nil, ctx}
+  defp next_token(%{tokens: []} = ctx), do: {nil, ctx}
 
-  defp skip_token(%{tokens: [%Token{} = previous, %Token{type: :eof} | _]} = ctx),
+  defp next_token(%{tokens: [%Token{} = previous, %Token{type: :eof} | _]} = ctx),
     do: {previous, %{ctx | tokens: [Token.eof(previous.line)]}}
 
-  defp skip_token(%{tokens: [%Token{type: :eof} | _]} = ctx), do: {nil, ctx}
+  defp next_token(%{tokens: [%Token{type: :eof} | _]} = ctx), do: {nil, ctx}
 
-  defp skip_token(%{tokens: [%Token{} = previous | tokens]} = ctx),
+  defp next_token(%{tokens: [%Token{} = previous | tokens]} = ctx),
     do: {previous, %{ctx | tokens: tokens}}
 end

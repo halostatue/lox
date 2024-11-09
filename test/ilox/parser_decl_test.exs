@@ -65,5 +65,92 @@ defmodule Ilox.ParserDeclTest do
                   ], 3, %Token{type: :right_paren}}}
               ]} = Parser.parse("fun add(a, b, c) { print a + b + c; } add(1, 2, 3);")
     end
+
+    test "fun add(a, b, c) { return a + b + c; } print add(1, 2, 3);" do
+      assert {:ok,
+              [
+                {:function, %Token{lexeme: "add"},
+                 [%Token{lexeme: "a"}, %Token{lexeme: "b"}, %Token{lexeme: "c"}], 3,
+                 {:block,
+                  [
+                    {:return_stmt, %Token{type: :return},
+                     {:binary_expr,
+                      {:binary_expr, {:var_expr, %Token{lexeme: "a"}}, %Token{type: :plus},
+                       {:var_expr, %Token{lexeme: "b"}}}, %Token{type: :plus},
+                      {:var_expr, %Token{lexeme: "c"}}}}
+                  ]}},
+                {:print_stmt,
+                 {:call, {:var_expr, %Token{lexeme: "add"}},
+                  [
+                    {:literal_expr, %Token{literal: 1.0}},
+                    {:literal_expr, %Token{literal: 2.0}},
+                    {:literal_expr, %Token{literal: 3.0}}
+                  ], 3, %Token{type: :right_paren}}}
+              ]} =
+               Parser.parse("""
+               fun add(a, b, c) {
+                 return a + b + c;
+               }
+
+               print add(1, 2, 3);
+               """)
+    end
+
+    test "closures" do
+      src = """
+      fun makeCounter() {
+        var i = 0;
+
+        fun count() {
+          i = i + 1;
+          print i;
+        }
+      }
+
+      var counter1 = makeCounter();
+      var counter2 = makeCounter();
+
+      counter1();
+      counter2();
+      counter1();
+      counter2();
+      """
+
+      assert {:ok,
+              [
+                {:function, %Token{lexeme: "makeCounter"}, [], 0,
+                 {:block,
+                  [
+                    {:var_decl, %Token{lexeme: "i"}, {:literal_expr, %Token{literal: +0.0}}},
+                    {:function, %Token{lexeme: "count"}, [], 0,
+                     {:block,
+                      [
+                        {:expr_stmt,
+                         {:assign_expr, %Token{lexeme: "i"},
+                          {:binary_expr, {:var_expr, %Token{lexeme: "i"}}, %Token{type: :plus},
+                           {:literal_expr, %Token{literal: 1.0}}}}},
+                        {:print_stmt, {:var_expr, %Token{lexeme: "i"}}}
+                      ]}}
+                  ]}},
+                {:var_decl, %Token{lexeme: "counter1"},
+                 {:call, {:var_expr, %Token{lexeme: "makeCounter"}}, [], 0,
+                  %Token{type: :right_paren}}},
+                {:var_decl, %Token{lexeme: "counter2"},
+                 {:call, {:var_expr, %Token{lexeme: "makeCounter"}}, [], 0,
+                  %Token{type: :right_paren}}},
+                {:expr_stmt,
+                 {:call, {:var_expr, %Token{lexeme: "counter1"}}, [], 0,
+                  %Token{type: :right_paren}}},
+                {:expr_stmt,
+                 {:call, {:var_expr, %Token{lexeme: "counter2"}}, [], 0,
+                  %Token{type: :right_paren}}},
+                {:expr_stmt,
+                 {:call, {:var_expr, %Token{lexeme: "counter1"}}, [], 0,
+                  %Token{type: :right_paren}}},
+                {:expr_stmt,
+                 {:call, {:var_expr, %Token{lexeme: "counter2"}}, [], 0,
+                  %Token{type: :right_paren}}}
+              ]} = Parser.parse(src)
+    end
   end
 end

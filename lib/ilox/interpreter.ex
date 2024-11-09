@@ -1,12 +1,8 @@
-defmodule Ilox.RuntimeError do
-  defexception [:token, :message, where: nil]
-  defdelegate message(e), to: Ilox.Errors, as: :format
-end
-
 defmodule Ilox.Interpreter do
   @moduledoc """
   The expression interpreter for ilox.
   """
+
   alias Ilox.Callable
   alias Ilox.Env
   alias Ilox.Errors
@@ -15,27 +11,30 @@ defmodule Ilox.Interpreter do
 
   import Ilox.Guards
 
-  @spec run(Env.t(), String.t() | list(Token.t()) | Ilox.Parser.program(), keyword()) ::
+  @doc """
+  Runs an ilox script.
+  """
+  @spec run(Env.t() | nil, String.t() | list(Token.t()) | Ilox.Parser.program()) ::
           :ok | {:error, atom(), String.t()}
-  def run(env \\ nil, input, global_env_options \\ [])
+  def run(env \\ nil, input)
 
-  def run(env, source, global_env_options) when is_binary(source) do
+  def run(env, source) when is_binary(source) do
     case Parser.parse(source) do
-      {:ok, statements} -> run(env, statements, global_env_options)
+      {:ok, statements} -> run(env, statements)
       {:error, type, errors} -> {:error, type, errors}
     end
   end
 
-  def run(env, [head | _] = tokens, global_env_options) when is_struct(head, Token) do
+  def run(env, [head | _] = tokens) when is_struct(head, Token) do
     case Parser.parse(tokens) do
-      {:ok, statements} -> run(env, statements, global_env_options)
+      {:ok, statements} -> run(env, statements)
       {:error, :parser, errors} -> {:error, :parser, errors}
     end
   end
 
-  def run(env, [head | _] = statements, global_env_options) when is_tuple(head) do
+  def run(env, [head | _] = statements) when is_tuple(head) do
     env
-    |> define_global_env(global_env_options)
+    |> create_env()
     |> handle_statements(statements)
 
     :ok
@@ -44,9 +43,9 @@ defmodule Ilox.Interpreter do
       {:error, :runtime, Exception.message(e)}
   end
 
-  @spec eval_expr(Env.t(), String.t() | list(Token.t()) | Ilox.expr()) ::
+  @spec eval_expr(Env.t() | nil, String.t() | list(Token.t()) | Ilox.expr()) ::
           {:ok, binary()} | {:error, atom(), String.t()}
-  def eval_expr(env \\ Env.new(), input)
+  def eval_expr(env \\ nil, input)
 
   def eval_expr(env, source) when is_binary(source) do
     case Parser.parse_expr(source) do
@@ -63,7 +62,11 @@ defmodule Ilox.Interpreter do
   end
 
   def eval_expr(env, expr) when is_tuple(expr) do
-    {_env, value} = handle_expression(env, expr)
+    {_env, value} =
+      env
+      |> create_env()
+      |> handle_expression(expr)
+
     {:ok, inspectify(value)}
   rescue
     e in Ilox.RuntimeError ->
@@ -71,9 +74,23 @@ defmodule Ilox.Interpreter do
   end
 
   @doc false
-  def execute_block(env, {:block, statements}), do: handle_expression(env, {:block, statements})
+  def execute_function_body(env, {:block, statements}) do
+    env = handle_statements(env, statements)
+    {env, nil}
+  end
 
   defp handle_statements(env, []), do: env
+
+  defp handle_statements(env, [{:return_stmt, _, value} | _]) do
+    {env, value} =
+      if value do
+        handle_expression(env, value)
+      else
+        {env, nil}
+      end
+
+    raise Ilox.ReturnValue, env: env, value: value
+  end
 
   defp handle_statements(env, [current | statements]) do
     {env, _} = handle_expression(env, current)
@@ -152,7 +169,7 @@ defmodule Ilox.Interpreter do
     end
   end
 
-  defp handle_expression(env, {:var_expr, name}), do: Env.get(env, name)
+  defp handle_expression(env, {:var_expr, name}), do: {env, Env.get(env, name)}
 
   defp handle_expression(env, {:var_decl, name, initializer}) do
     {env, value} =
@@ -184,13 +201,18 @@ defmodule Ilox.Interpreter do
   end
 
   defp handle_expression(env, {:block, statements}) do
-    %{enclosing: env} = handle_statements(Env.new(env), statements)
+    env =
+      env
+      |> Env.push_scope()
+      |> handle_statements(statements)
+      |> Env.pop_scope()
+
     {env, nil}
   end
 
   defp handle_expression(env, {:if_stmt, condition, then_branch, else_branch}) do
     {env, value} = handle_expression(env, condition)
-    {env, _value} = handle_expression(env, if(value, do: then_branch, else: else_branch))
+    env = handle_statements(env, [if(value, do: then_branch, else: else_branch)])
     {env, nil}
   end
 
@@ -198,7 +220,7 @@ defmodule Ilox.Interpreter do
     {env, test} = handle_expression(env, condition)
 
     if test do
-      {env, _result} = handle_expression(env, body)
+      env = handle_statements(env, [body])
       handle_expression(env, while)
     else
       {env, nil}
@@ -206,7 +228,14 @@ defmodule Ilox.Interpreter do
   end
 
   defp handle_expression(env, {:function, name, _params, arity, _body} = fun) do
-    fun = Callable.new(arity: arity, decl: fun, to_string: "<fn #{name.lexeme}>")
+    fun =
+      Callable.new(
+        arity: arity,
+        decl: fun,
+        to_string: "<fn #{name.lexeme}>",
+        closure_id: Env.current_scope(env)
+      )
+
     {env, _} = Env.define(env, name, fun)
     {env, nil}
   end
@@ -232,8 +261,7 @@ defmodule Ilox.Interpreter do
 
     arguments = Enum.reverse(arguments)
 
-    {env, result} = Callable.call(callee, env, arguments)
-    {env, result}
+    Callable.call(env, callee, arguments)
   end
 
   # Comparison operators *must* be restricted to numbers, because all values in the BEAM
@@ -266,9 +294,17 @@ defmodule Ilox.Interpreter do
   defp invalid_operands!(token),
     do: [token: token, message: "Operands must be numbers.", where: Errors.where(token)]
 
-  defp define_global_env(nil, global_env_options),
-    do: Env.__prepend_global_env(global_env_options)
+  defp create_env(%Env{} = env), do: env
+  defp create_env(nil), do: Env.new()
+end
 
-  defp define_global_env(env, global_env_options),
-    do: Env.__prepend_global_env(env, global_env_options)
+defmodule Ilox.RuntimeError do
+  defexception [:token, :message, where: nil]
+  defdelegate message(e), to: Ilox.Errors, as: :format
+end
+
+defmodule Ilox.ReturnValue do
+  defexception [:env, :value]
+
+  def message(e), do: "Return value: #{inspect(e)}"
 end

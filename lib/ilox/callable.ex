@@ -6,33 +6,44 @@ defmodule Ilox.Callable do
   alias Ilox.Env
   alias Ilox.Interpreter
 
-  @enforce_keys [:arity, :decl, :to_string]
-  defstruct [:arity, :decl, :to_string]
+  @enforce_keys [:arity, :decl, :to_string, :closure_id]
+  defstruct [:arity, :decl, :to_string, :closure_id]
 
   def new(opts \\ []), do: struct!(__MODULE__, opts)
 
-  def call(%__MODULE__{decl: decl}, %Env{} = env, arguments) do
-    env =
-      env
-      |> Env.global_env()
-      |> Env.new()
-
-    do_call(decl, env, arguments)
+  def call(env, %__MODULE__{decl: decl, closure_id: closure_id}, arguments) do
+    Env.call_with_scope(env, closure_id, fn env ->
+      {env, value} = do_call(Env.push_scope(env), decl, arguments)
+      {Env.pop_scope(env), value}
+    end)
   end
 
-  def __native(arity, call), do: %__MODULE__{arity: arity, decl: call, to_string: "<native fn>"}
+  def __native(arity, call),
+    do: %__MODULE__{
+      arity: arity,
+      decl: call,
+      to_string: "<native fn>",
+      closure_id: "<globals>"
+    }
 
-  defp do_call(native, env, args) when is_function(native, 2) do
-    native.(env, args)
-  end
+  def __clock,
+    do: __native(0, fn env, _ -> {env, System.monotonic_time(:second) / 1} end)
 
-  defp do_call({:function, _name, params, _arity, body}, env, arguments) do
+  def __env,
+    do: __native(0, fn env, _ -> {env, inspect(env)} end)
+
+  defp do_call(env, native, args) when is_function(native, 2), do: native.(env, args)
+
+  defp do_call(env, {:function, _name, params, _arity, body}, arguments) do
     env =
       params
       |> Enum.zip(arguments)
       |> Enum.reduce(env, fn {name, value}, env -> elem(Env.define(env, name, value), 0) end)
 
-    Interpreter.execute_block(env, body)
+    Interpreter.execute_function_body(env, body)
+  rescue
+    e in Ilox.ReturnValue ->
+      {e.env, e.value}
   end
 
   defimpl String.Chars do

@@ -2,6 +2,7 @@ defmodule Ilox.InterpreterTest do
   use ExUnit.Case, async: true
   use ExUnitProperties
 
+  alias Ilox.Env
   alias Ilox.Interpreter
 
   import Ilox.StreamData
@@ -295,10 +296,109 @@ defmodule Ilox.InterpreterTest do
       assert {:ok, output: ["<fn add>"]} =
                run("fun add(a, b, c) { print a + b + c; } print add;")
     end
+
+    test "fun add(a, b, c) { return a + b + c; } print add(1, 2, 3);" do
+      assert {:ok, output: ["6"]} =
+               run("fun add(a, b, c) { return a + b + c; } print add(1, 2, 3);")
+    end
+
+    test "fun add(a, b, c) { print a + b + c; } print add(1, 2, 3);" do
+      assert {:ok, output: ["6", ""]} =
+               run("""
+               fun add(a, b, c) {
+               print a + b + c;
+               }
+
+               print add(1, 2, 3);
+               """)
+    end
+  end
+
+  describe "run/2: fibonacci" do
+    @tag timeout: 3000
+    test "fibonacci" do
+      src = """
+      fun fib(n) {
+        if (n < 2) return n;
+
+        return fib(n - 1) + fib(n - 2);
+      }
+
+      print fib(7);
+      """
+
+      assert {:ok, output: ["13"]} = run(src)
+    end
+
+    @tag timeout: 3000
+    test "fibonacci loop" do
+      src = """
+      fun fib(n) {
+        if (n <= 1) return n;
+        return fib(n - 2) + fib(n - 1);
+      }
+
+      for (var i = 0; i < 20; i = i + 1) {
+        print fib(i);
+      }
+      """
+
+      assert {:ok,
+              output: [
+                "0",
+                "1",
+                "1",
+                "2",
+                "3",
+                "5",
+                "8",
+                "13",
+                "21",
+                "34",
+                "55",
+                "89",
+                "144",
+                "233",
+                "377",
+                "610",
+                "987",
+                "1597",
+                "2584",
+                "4181"
+              ]} = run(src)
+    end
+  end
+
+  describe "run/2: closure" do
+    @tag :focus
+    test "counters" do
+      src = """
+      fun makeCounter() {
+        var i = 0;
+
+        fun count() {
+          i = i + 1;
+          print i;
+        }
+
+        return count;
+      }
+
+      var counter1 = makeCounter();
+      var counter2 = makeCounter();
+
+      counter1();
+      counter2();
+      counter1();
+      counter2();
+      """
+
+      assert {:ok, output: ["1", "1", "2", "2"]} = run(src)
+    end
   end
 
   defp run(source, replacements \\ []) do
-    case Interpreter.run(nil, __replace(source, replacements), print: &print/1) do
+    case Interpreter.run(Env.new(print: &print/1), __replace(source, replacements)) do
       :ok ->
         {:ok, output: Enum.reverse(Process.get(:"$ilox$output", []))}
 
@@ -320,9 +420,9 @@ defmodule Ilox.InterpreterTest do
     Process.put(:"$ilox$output", queue)
   end
 
-  defp number_to_string(value) do
-    value
-    |> :erlang.float_to_binary([:short, :compact])
-    |> String.replace_suffix(".0", "")
-  end
+  # defp number_to_string(value) do
+  #   value
+  #   |> :erlang.float_to_binary([:short, :compact])
+  #   |> String.replace_suffix(".0", "")
+  # end
 end
