@@ -89,10 +89,10 @@ defmodule Ilox.Env do
   end
 
   @doc """
-  Returns the root environment, the "globals".
+  Returns the root environment, the "global_env".
   """
-  def globals(%__MODULE__{enclosing: nil} = env), do: env
-  def globals(%__MODULE__{enclosing: %__MODULE__{} = parent}), do: globals(parent)
+  def global_env(%__MODULE__{enclosing: nil} = env), do: env
+  def global_env(%__MODULE__{enclosing: %__MODULE__{} = parent}), do: global_env(parent)
 
   @doc false
   def __define(%__MODULE__{} = env, name, value) do
@@ -114,24 +114,24 @@ defmodule Ilox.Env do
   end
 
   @doc false
-  def __prepend_globals, do: define_globals([])
-  def __prepend_globals(%__MODULE__{} = env), do: __prepend_globals(env, define_globals([]))
+  def __prepend_global_env, do: define_global_env([])
+  def __prepend_global_env(%__MODULE__{} = env), do: __prepend_global_env(env, define_global_env([]))
 
-  def __prepend_globals(globals_options) when is_list(globals_options),
-    do: define_globals(globals_options)
+  def __prepend_global_env(global_env_options) when is_list(global_env_options),
+    do: define_global_env(global_env_options)
 
-  def __prepend_globals(%__MODULE__{} = env, globals_options) when is_list(globals_options),
-    do: __prepend_globals(env, define_globals(globals_options))
+  def __prepend_global_env(%__MODULE__{} = env, global_env_options) when is_list(global_env_options),
+    do: __prepend_global_env(env, define_global_env(global_env_options))
 
-  def __prepend_globals(
+  def __prepend_global_env(
         %__MODULE__{} = env,
-        %__MODULE__{enclosing: nil} = globals
+        %__MODULE__{enclosing: nil} = global_env
       ) do
     enclosing =
       if env.enclosing do
-        __prepend_globals(env.enclosing, globals)
+        __prepend_global_env(env.enclosing, global_env)
       else
-        globals
+        global_env
       end
 
     print =
@@ -144,9 +144,9 @@ defmodule Ilox.Env do
     %{env | enclosing: enclosing, print: print}
   end
 
-  defp define_globals(globals_options) do
+  defp define_global_env(global_env_options) do
     clock = Callable.__native(0, fn env, _ -> {env, System.monotonic_time(:second) / 1} end)
-    __define(new(globals_options), "clock", clock)
+    __define(new(global_env_options), "clock", clock)
   end
 
   defp undefined_variable(%Token{} = name),

@@ -2,7 +2,6 @@ defmodule Ilox.InterpreterTest do
   use ExUnit.Case, async: true
   use ExUnitProperties
 
-  alias Ilox.Env
   alias Ilox.Interpreter
 
   import Ilox.StreamData
@@ -286,10 +285,20 @@ defmodule Ilox.InterpreterTest do
       assert {:ok, output: [output]} = run("print clock();")
       assert output =~ ~r/^-?\d+$/
     end
+
+    test "fun add(a, b, c) { print a + b + c; } add(1, 2, 3);" do
+      assert {:ok, output: ["6"]} =
+               run("fun add(a, b, c) { print a + b + c; } add(1, 2, 3);")
+    end
+
+    test "fun add(a, b, c) { print a + b + c; } print add;" do
+      assert {:ok, output: ["<fn add>"]} =
+               run("fun add(a, b, c) { print a + b + c; } print add;")
+    end
   end
 
   defp run(source, replacements \\ []) do
-    case Interpreter.run(env(), __replace(source, replacements)) do
+    case Interpreter.run(nil, __replace(source, replacements), print: &print/1) do
       :ok ->
         {:ok, output: Enum.reverse(Process.get(:"$ilox$output", []))}
 
@@ -304,8 +313,6 @@ defmodule Ilox.InterpreterTest do
 
   defp __replace(source, [{key, value} | rest]),
     do: __replace(String.replace(source, inspect(key), value), rest)
-
-  defp env, do: %{Env.new() | print: &print/1}
 
   defp print(message) do
     queue = Process.get(:"$ilox$output", [])

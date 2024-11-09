@@ -15,27 +15,27 @@ defmodule Ilox.Interpreter do
 
   import Ilox.Guards
 
-  @spec run(Env.t(), String.t() | list(Token.t()) | Ilox.Parser.program()) ::
+  @spec run(Env.t(), String.t() | list(Token.t()) | Ilox.Parser.program(), keyword()) ::
           :ok | {:error, atom(), String.t()}
-  def run(env \\ nil, input)
+  def run(env \\ nil, input, global_env_options \\ [])
 
-  def run(env, source) when is_binary(source) do
+  def run(env, source, global_env_options) when is_binary(source) do
     case Parser.parse(source) do
-      {:ok, statements} -> run(env, statements)
+      {:ok, statements} -> run(env, statements, global_env_options)
       {:error, type, errors} -> {:error, type, errors}
     end
   end
 
-  def run(env, [head | _] = tokens) when is_struct(head, Token) do
+  def run(env, [head | _] = tokens, global_env_options) when is_struct(head, Token) do
     case Parser.parse(tokens) do
-      {:ok, statements} -> run(env, statements)
+      {:ok, statements} -> run(env, statements, global_env_options)
       {:error, :parser, errors} -> {:error, :parser, errors}
     end
   end
 
-  def run(env, [head | _] = statements) when is_tuple(head) do
+  def run(env, [head | _] = statements, global_env_options) when is_tuple(head) do
     env
-    |> define_globals()
+    |> define_global_env(global_env_options)
     |> handle_statements(statements)
 
     :ok
@@ -70,9 +70,12 @@ defmodule Ilox.Interpreter do
       {:error, :runtime, Exception.message(e)}
   end
 
-  def handle_statements(env, []), do: env
+  @doc false
+  def execute_block(env, {:block, statements}), do: handle_expression(env, {:block, statements})
 
-  def handle_statements(env, [current | statements]) do
+  defp handle_statements(env, []), do: env
+
+  defp handle_statements(env, [current | statements]) do
     {env, _} = handle_expression(env, current)
     handle_statements(env, statements)
   end
@@ -174,7 +177,9 @@ defmodule Ilox.Interpreter do
 
   defp handle_expression(env, {:print_stmt, expr}) do
     {env, value} = handle_expression(env, expr)
+
     env.print.(stringify(value))
+
     {env, nil}
   end
 
@@ -198,6 +203,12 @@ defmodule Ilox.Interpreter do
     else
       {env, nil}
     end
+  end
+
+  defp handle_expression(env, {:function, name, _params, arity, _body} = fun) do
+    fun = Callable.new(arity: arity, decl: fun, to_string: "<fn #{name.lexeme}>")
+    {env, _} = Env.define(env, name, fun)
+    {env, nil}
   end
 
   defp handle_expression(env, {:call, callee, arguments, argc, closing}) do
@@ -255,5 +266,9 @@ defmodule Ilox.Interpreter do
   defp invalid_operands!(token),
     do: [token: token, message: "Operands must be numbers.", where: Errors.where(token)]
 
-  defp define_globals(env), do: Env.__prepend_globals(env)
+  defp define_global_env(nil, global_env_options),
+    do: Env.__prepend_global_env(global_env_options)
+
+  defp define_global_env(env, global_env_options),
+    do: Env.__prepend_global_env(env, global_env_options)
 end

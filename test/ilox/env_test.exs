@@ -152,14 +152,14 @@ defmodule Ilox.EnvTest do
     end
   end
 
-  describe "globals/1 and __prepend_globals/{0-2}" do
-    test "__prepend_globals/0 returns a global environment" do
-      assert %Env{values: %{"clock" => %Callable{}}, enclosing: nil} = Env.__prepend_globals()
+  describe "global_env/1 and __prepend_global_env/{0-2}" do
+    test "__prepend_global_env/0 returns a global environment" do
+      assert %Env{values: %{"clock" => %Callable{}}, enclosing: nil} = Env.__prepend_global_env()
     end
 
-    test "__prepend_globals/1 wraps a global environment around the provided env" do
+    test "__prepend_global_env/1 wraps a global environment around the provided env" do
       base = Env.new(print: &fake_print/1)
-      env = Env.__prepend_globals(base)
+      env = Env.__prepend_global_env(base)
 
       assert %{} == env.values
       assert %{"clock" => %Callable{}} = env.enclosing.values
@@ -168,9 +168,9 @@ defmodule Ilox.EnvTest do
       assert env.enclosing.print == (&IO.puts/1)
     end
 
-    test "__prepend_globals/2 with options makes a custom global environment" do
+    test "__prepend_global_env/2 with options makes a custom global environment" do
       base = Env.new()
-      env = Env.__prepend_globals(base, print: &fake_print/1)
+      env = Env.__prepend_global_env(base, print: &fake_print/1)
 
       assert %{} == env.values
       assert %{"clock" => %Callable{}} = env.enclosing.values
@@ -179,7 +179,7 @@ defmodule Ilox.EnvTest do
       assert env.enclosing.print == (&fake_print/1)
     end
 
-    test "__prepend_globals works regardless of nesting depth" do
+    test "__prepend_global_env works regardless of nesting depth" do
       fp = &fake_print/1
 
       assert %Env{
@@ -205,10 +205,10 @@ defmodule Ilox.EnvTest do
                |> Env.__define("middle", 2)
                |> Env.new()
                |> Env.__define("outer", 3)
-               |> Env.__prepend_globals(print: fp)
+               |> Env.__prepend_global_env(print: fp)
     end
 
-    test "globals/1 returns the root environment" do
+    test "global_env/1 returns the root environment" do
       env =
         Env.new()
         |> Env.__define("inner", 1)
@@ -216,9 +216,9 @@ defmodule Ilox.EnvTest do
         |> Env.__define("middle", 2)
         |> Env.new()
         |> Env.__define("outer", 3)
-        |> Env.__prepend_globals()
+        |> Env.__prepend_global_env()
 
-      assert env.enclosing.enclosing.enclosing == Env.globals(env)
+      assert env.enclosing.enclosing.enclosing == Env.global_env(env)
     end
   end
 
