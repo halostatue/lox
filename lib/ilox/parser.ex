@@ -31,12 +31,15 @@ defmodule Ilox.Parser do
               |  IDENTIFIER ;
   arguments   →  expression ( "," expression )* ;
   program     →  ( declaration )* ;
-  declaration →  var_decl | statement ;
+  declaration →  fun_decl | var_decl | statement ;
   statement   →  expr_stmt
               | print_stmt
               | block
               | if_stmt
               | while_stmt ;
+  fun_decl    →  "fun" function ;
+  function    →  IDENTIFIER "(" parameters? ")" block ;
+  parameters  →  IDENTIFIER ( "," IDENTIFIER )* ;
   var_decl    →  "var" IDENTIFIER ( "=" expression )? ";" ;
   if_stmt     →  "if" "(" expression ")" statement
                  ( "else" statement )? ;
@@ -61,9 +64,17 @@ defmodule Ilox.Parser do
 
   @typedoc section: :pgrammar
   @typedoc """
-  A `t:var_decl/0` or `t:statement/0`.
+  A `t:fun_decl/0`, `t:var_decl/0`, or `t:statement/0`.
   """
   @type declaration :: var_decl | statement
+
+  @typedoc section: :pgrammar
+  @typedoc """
+  A variable declaration with an optional initializer.
+  """
+  @type fun_decl ::
+          {:function, name :: Token.t(), params :: list(Token.t()), arity :: non_neg_integer(),
+           body :: list(statement)}
 
   @typedoc section: :pgrammar
   @typedoc """
@@ -208,8 +219,8 @@ defmodule Ilox.Parser do
   defp handle_declaration(%{tokens: [%Token{type: :eof} | _]} = ctx), do: ctx
 
   defp handle_declaration(%{tokens: [current | tokens]} = ctx) do
-    if type_match(current, :var) do
-      handle_var_declaration(%{ctx | tokens: tokens})
+    if type_match(current, [:fun, :var]) do
+      handle_declaration(current.type, %{ctx | tokens: tokens})
     else
       handle_statement(ctx)
     end
@@ -220,9 +231,8 @@ defmodule Ilox.Parser do
       |> handle_declaration()
   end
 
-  defp handle_var_declaration(ctx) do
-    {name, %{tokens: [current | tokens]} = ctx} =
-      expect(ctx, :identifier, "Expect variable name.")
+  defp handle_declaration(:var, ctx) do
+    {name, %{tokens: [current | tokens]} = ctx} = expect_identifier(ctx, "variable")
 
     {initializer, ctx} =
       if type_match(current, :equal) do
@@ -233,6 +243,50 @@ defmodule Ilox.Parser do
 
     {_, ctx} = expect_semicolon(ctx, "variable declaration")
     add_statement(ctx, {:var_decl, name, initializer})
+  end
+
+  @callable_types %{
+    class: "class",
+    fun: "function",
+    method: "method"
+  }
+
+  @callable_type_names Map.keys(@callable_types)
+
+  defp handle_declaration(type, ctx) when type in @callable_type_names do
+    kind = @callable_types[type]
+
+    {name, ctx} = expect_identifier(ctx, kind)
+    {_, ctx} = expect_left_paren(ctx, kind)
+    {params, %{tokens: [current | _]} = ctx} = handle_decl_params(ctx)
+
+    arity = Enum.count(params)
+    ctx = check_arity(ctx, arity, current, "parameters")
+
+    {_, ctx} = expect_right_paren(ctx, "parameters")
+    {_, ctx} = expect(ctx, :left_brace, "Expect '{' before #{kind} body.")
+
+    %{statements: [body | statements]} = ctx = handle_block(%{ctx | break: ctx.break + 1})
+
+    add_statement(%{ctx | statements: statements}, {:function, name, params, arity, body})
+  end
+
+  defp handle_decl_params(%{tokens: []} = ctx), do: {[], ctx}
+  defp handle_decl_params(%{tokens: [%Token{type: :eof} | _]} = ctx), do: {[], ctx}
+  defp handle_decl_params(ctx), do: handle_decl_params(ctx, [])
+
+  defp handle_decl_params(%{tokens: [%Token{type: :right_paren} | _]} = ctx, params),
+    do: {Enum.reverse(params), ctx}
+
+  defp handle_decl_params(ctx, params) do
+    {param, %{tokens: [current | tokens]} = ctx} = expect_identifier(ctx, "parameter")
+    params = [param | params]
+
+    if type_match(current, :comma) do
+      handle_decl_params(%{ctx | tokens: tokens}, params)
+    else
+      {Enum.reverse(params), ctx}
+    end
   end
 
   defp handle_statement(%{tokens: []} = ctx), do: ctx
@@ -269,9 +323,9 @@ defmodule Ilox.Parser do
   end
 
   defp handle_if_statement(ctx) do
-    {_, ctx} = expect(ctx, :left_paren, "Expect '(' after 'if'.")
+    {_, ctx} = expect_left_paren(ctx, "if")
     {condition, ctx} = handle_expression(ctx)
-    {_, ctx} = expect(ctx, :right_paren, "Expect ')' after 'if' condition.")
+    {_, ctx} = expect_right_paren(ctx, "'if' condition")
 
     {then_branch, %{tokens: [current | _]} = ctx} = handle_nested_statement(ctx)
 
@@ -287,9 +341,9 @@ defmodule Ilox.Parser do
   end
 
   defp handle_while_statement(ctx) do
-    {_, ctx} = expect(ctx, :left_paren, "Expect '(' after 'while'.")
+    {_, ctx} = expect_left_paren(ctx, "while")
     {condition, ctx} = handle_expression(ctx)
-    {_, ctx} = expect(ctx, :right_paren, "Expect ')' after 'while' condition.")
+    {_, ctx} = expect_right_paren(ctx, "'while' condition")
 
     {body, ctx} = handle_nested_statement(ctx)
 
@@ -297,7 +351,7 @@ defmodule Ilox.Parser do
   end
 
   defp handle_for_statement(ctx) do
-    {_, %{tokens: [current | tokens]} = ctx} = expect(ctx, :left_paren, "Expect '(' after 'for'.")
+    {_, %{tokens: [current | tokens]} = ctx} = expect_left_paren(ctx, "for")
 
     {initializer, %{tokens: [current | _]} = ctx} =
       cond do
@@ -306,7 +360,7 @@ defmodule Ilox.Parser do
 
         type_match(current, :var) ->
           %{statements: [current | statements]} =
-            ctx = handle_var_declaration(%{ctx | tokens: tokens, break: ctx.break + 1})
+            ctx = handle_declaration(:var, %{ctx | tokens: tokens, break: ctx.break + 1})
 
           {current, %{ctx | statements: statements}}
 
@@ -330,7 +384,7 @@ defmodule Ilox.Parser do
         handle_expression(ctx)
       end
 
-    {_, ctx} = expect(ctx, :right_paren, "Expect ')' after 'for' clauses.")
+    {_, ctx} = expect_right_paren(ctx, "'for' clauses")
 
     {body, ctx} = handle_nested_statement(ctx)
 
@@ -505,26 +559,10 @@ defmodule Ilox.Parser do
   end
 
   defp handle_call(ctx, callee) do
-    {args, ctx} = handle_call_args(ctx)
-
-    {closing, %{tokens: [current | tokens]} = ctx} =
-      expect(ctx, :right_paren, "Expect ')' after arguments.")
-
+    {args, %{tokens: [current | _]} = ctx} = handle_call_args(ctx)
     count = Enum.count(args)
-
-    ctx =
-      if count > 255 do
-        %{
-          ctx
-          | errors: [
-              Errors.format(%{token: closing, message: "Can't have more than 255 arguments."})
-              | ctx.errors
-            ]
-        }
-      else
-        ctx
-      end
-
+    ctx = check_arity(ctx, count, current, "arguments")
+    {closing, %{tokens: [current | tokens]} = ctx} = expect_right_paren(ctx, "arguments")
     call = {:call, callee, args, count, closing}
 
     if type_match(current, :left_paren) do
@@ -533,6 +571,14 @@ defmodule Ilox.Parser do
       {call, ctx}
     end
   end
+
+  defp check_arity(ctx, count, token, type) when count > 255 do
+    error = Errors.format(%{token: token, message: "Can't have more than 255 #{type}."})
+
+    %{ctx | errors: [error | ctx.errors]}
+  end
+
+  defp check_arity(ctx, _count, _token, _type), do: ctx
 
   defp handle_call_args(%{tokens: []} = ctx), do: {[], ctx}
   defp handle_call_args(%{tokens: [%Token{type: :eof} | _]} = ctx), do: {[], ctx}
@@ -573,7 +619,7 @@ defmodule Ilox.Parser do
 
   defp handle_primary(%{tokens: [%Token{type: :left_paren} | tokens]} = ctx) do
     {expr, ctx} = handle_expression(%{ctx | tokens: tokens})
-    {_, ctx} = expect(ctx, :right_paren, "Expect ')' after expression.")
+    {_, ctx} = expect_right_paren(ctx, "expression")
     {{:group_expr, expr}, ctx}
   end
 
@@ -581,6 +627,9 @@ defmodule Ilox.Parser do
     raise Ilox.ParserError, token: current, message: "Expect expression.", ctx: ctx
   end
 
+  defp expect_identifier(ctx, kind), do: expect(ctx, :identifier, "Expect #{kind} name.")
+  defp expect_left_paren(ctx, kind), do: expect(ctx, :left_paren, "Expect '(' after '#{kind}'.")
+  defp expect_right_paren(ctx, kind), do: expect(ctx, :right_paren, "Expect ')' after #{kind}.")
   defp expect_semicolon(ctx, clause), do: expect(ctx, :semicolon, "Expect ';' after #{clause}.")
 
   defp expect(%{tokens: [%Token{type: type} = current | tokens]} = ctx, type, _message),

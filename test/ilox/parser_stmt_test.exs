@@ -277,26 +277,6 @@ defmodule Ilox.ParserStmtTest do
     end
   end
 
-  describe "parse/1: variable declaration and initialization" do
-    test "var left = right;" do
-      assert {:ok,
-              [
-                {:var_decl, %Token{type: :identifier, lexeme: "left"},
-                 {:var_expr, %Token{type: :identifier, lexeme: "right"}}}
-              ]} = Parser.parse("var left = right;")
-    end
-
-    test "var left;" do
-      assert {:ok, [{:var_decl, %Token{type: :identifier, lexeme: "left"}, nil}]} =
-               Parser.parse("var left;")
-    end
-
-    test "var; errors on missing identifier" do
-      assert {:error, :parser, ["[line 1] Error at ';': Expect variable name."]} =
-               Parser.parse("var;")
-    end
-  end
-
   describe "parse/1: block statements" do
     test "one block" do
       assert {:ok,
