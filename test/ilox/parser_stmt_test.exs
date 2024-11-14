@@ -607,9 +607,10 @@ defmodule Ilox.ParserStmtTest do
                     {:block,
                      [
                        {:print_stmt, {:var_expr, %Token{lexeme: "a"}}},
-                       {:assign_expr, %Token{lexeme: "a"},
-                        {:binary_expr, {:var_expr, %Token{lexeme: "a"}}, %Token{type: :minus},
-                         {:literal_expr, %Token{lexeme: "1"}}}}
+                       {:expr_stmt,
+                        {:assign_expr, %Token{lexeme: "a"},
+                         {:binary_expr, {:var_expr, %Token{lexeme: "a"}}, %Token{type: :minus},
+                          {:literal_expr, %Token{lexeme: "1"}}}}}
                      ]}}
                  ]}
               ]} = Parser.parse("for (var a = 1; a > 0; a = a - 1) print a;")
@@ -627,9 +628,10 @@ defmodule Ilox.ParserStmtTest do
                     {:block,
                      [
                        {:print_stmt, {:var_expr, %Token{lexeme: "a"}}},
-                       {:assign_expr, %Token{lexeme: "a"},
-                        {:binary_expr, {:var_expr, %Token{lexeme: "a"}}, %Token{type: :minus},
-                         {:literal_expr, %Token{lexeme: "1"}}}}
+                       {:expr_stmt,
+                        {:assign_expr, %Token{lexeme: "a"},
+                         {:binary_expr, {:var_expr, %Token{lexeme: "a"}}, %Token{type: :minus},
+                          {:literal_expr, %Token{lexeme: "1"}}}}}
                      ]}}
                  ]}
               ]} = Parser.parse("for (var a = 1; a > 0; a = a - 1) { print a; }")

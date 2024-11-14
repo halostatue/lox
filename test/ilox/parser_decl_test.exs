@@ -1,8 +1,8 @@
 defmodule Ilox.ParserDeclTest do
   use ExUnit.Case, async: true
 
-  alias Ilox.Token
   alias Ilox.Parser
+  alias Ilox.Token
 
   describe "parse/1: variable declaration and initialization" do
     test "var left = right;" do

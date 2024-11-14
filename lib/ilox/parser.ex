@@ -4,8 +4,6 @@ defmodule Ilox.ParserError do
 end
 
 defmodule Ilox.Parser do
-  # import Ilox.Token, only: [inspect_tokens: 1, inspect_tokens: 2]
-
   @moduledoc """
   The parser adapts the `m:Ilox#context-free-grammar` into one that encodes its precedence
   rules. The parser produces an AST that is a mix of the context free grammar for
@@ -174,7 +172,7 @@ defmodule Ilox.Parser do
     end
   end
 
-  def parse(tokens) when is_list(tokens), do: handle_program(tokens)
+  def parse(tokens) when is_list(tokens), do: parse_program(tokens)
 
   @spec parse_expr(tokens :: String.t() | list(Token.t())) :: Ilox.expr()
   def parse_expr(source) when is_binary(source) do
@@ -185,7 +183,7 @@ defmodule Ilox.Parser do
   end
 
   def parse_expr(tokens) do
-    {expr, ctx} = handle_expression(%{errors: [], tokens: tokens})
+    {expr, ctx} = parse_expression(%{errors: [], tokens: tokens})
 
     case ctx do
       %{errors: [_ | _]} -> {:error, :parser, Enum.reverse(ctx.errors)}
@@ -196,10 +194,10 @@ defmodule Ilox.Parser do
       {:error, :parser, [Exception.message(e)]}
   end
 
-  defp handle_program(tokens) when is_list(tokens) do
+  defp parse_program(tokens) when is_list(tokens) do
     ctx = %{errors: [], statements: [], tokens: tokens, scopes: [], break: 0}
 
-    case handle_program(ctx) do
+    case parse_program(ctx) do
       %{errors: [], statements: []} ->
         raise "Invalid state: no errors and no statements."
 
@@ -214,38 +212,38 @@ defmodule Ilox.Parser do
       {:error, :parser, [Exception.message(e)]}
   end
 
-  defp handle_program(%{tokens: []} = ctx),
-    do: handle_program(%{ctx | tokens: [Token.eof()]})
+  defp parse_program(%{tokens: []} = ctx),
+    do: parse_program(%{ctx | tokens: [Token.eof()]})
 
-  defp handle_program(%{tokens: [%Token{type: :eof} = token | _]} = ctx) do
+  defp parse_program(%{tokens: [%Token{type: :eof} = token | _]} = ctx) do
     raise Ilox.ParserError, token: token, message: "Expect expression.", ctx: ctx
   end
 
-  defp handle_program(%{} = ctx), do: handle_declaration(ctx)
+  defp parse_program(%{} = ctx), do: parse_declaration(ctx)
 
-  defp handle_declaration(%{tokens: []} = ctx), do: ctx
+  defp parse_declaration(%{tokens: []} = ctx), do: ctx
 
-  defp handle_declaration(%{tokens: [%Token{type: :eof} | _]} = ctx), do: ctx
+  defp parse_declaration(%{tokens: [%Token{type: :eof} | _]} = ctx), do: ctx
 
-  defp handle_declaration(%{tokens: [current | tokens]} = ctx) do
+  defp parse_declaration(%{tokens: [current | tokens]} = ctx) do
     if type_match(current, [:fun, :var]) do
-      handle_declaration(current.type, %{ctx | tokens: tokens})
+      parse_declaration(current.type, %{ctx | tokens: tokens})
     else
-      handle_statement(ctx)
+      parse_statement(ctx)
     end
   rescue
     e in Ilox.ParserError ->
       %{e.ctx | errors: [Exception.message(e) | e.ctx.errors]}
       |> synchronize()
-      |> handle_declaration()
+      |> parse_declaration()
   end
 
-  defp handle_declaration(:var, ctx) do
+  defp parse_declaration(:var, ctx) do
     {name, %{tokens: [current | tokens]} = ctx} = expect_identifier(ctx, "variable")
 
     {initializer, ctx} =
       if type_match(current, :equal) do
-        handle_expression(%{ctx | tokens: tokens})
+        parse_expression(%{ctx | tokens: tokens})
       else
         {nil, ctx}
       end
@@ -262,13 +260,13 @@ defmodule Ilox.Parser do
 
   @callable_type_names Map.keys(@callable_types)
 
-  defp handle_declaration(type, ctx) when type in @callable_type_names do
+  defp parse_declaration(type, ctx) when type in @callable_type_names do
     kind = @callable_types[type]
 
     {name, ctx} = expect_identifier(ctx, kind)
 
     {_, ctx} = expect_left_paren(ctx, kind)
-    {params, %{tokens: [current | _]} = ctx} = handle_decl_params(ctx)
+    {params, %{tokens: [current | _]} = ctx} = parse_decl_params(ctx)
 
     arity = Enum.count(params)
     ctx = check_arity(ctx, arity, current, "parameters")
@@ -276,67 +274,67 @@ defmodule Ilox.Parser do
     {_, ctx} = expect_right_paren(ctx, "parameters")
     {_, ctx} = expect(ctx, :left_brace, "Expect '{' before #{kind} body.")
 
-    %{statements: [body | statements]} = ctx = handle_block(%{ctx | break: ctx.break + 1})
+    %{statements: [body | statements]} = ctx = parse_block(%{ctx | break: ctx.break + 1})
 
     add_statement(%{ctx | statements: statements}, {:function, name, params, arity, body})
   end
 
-  defp handle_decl_params(%{tokens: []} = ctx), do: {[], ctx}
-  defp handle_decl_params(%{tokens: [%Token{type: :eof} | _]} = ctx), do: {[], ctx}
-  defp handle_decl_params(ctx), do: handle_decl_params(ctx, [])
+  defp parse_decl_params(%{tokens: []} = ctx), do: {[], ctx}
+  defp parse_decl_params(%{tokens: [%Token{type: :eof} | _]} = ctx), do: {[], ctx}
+  defp parse_decl_params(ctx), do: parse_decl_params(ctx, [])
 
-  defp handle_decl_params(%{tokens: [%Token{type: :right_paren} | _]} = ctx, params),
+  defp parse_decl_params(%{tokens: [%Token{type: :right_paren} | _]} = ctx, params),
     do: {Enum.reverse(params), ctx}
 
-  defp handle_decl_params(ctx, params) do
+  defp parse_decl_params(ctx, params) do
     {param, %{tokens: [current | tokens]} = ctx} = expect_identifier(ctx, "parameter")
     params = [param | params]
 
     if type_match(current, :comma) do
-      handle_decl_params(%{ctx | tokens: tokens}, params)
+      parse_decl_params(%{ctx | tokens: tokens}, params)
     else
       {Enum.reverse(params), ctx}
     end
   end
 
-  defp handle_statement(%{tokens: []} = ctx), do: ctx
-  defp handle_statement(%{tokens: [%Token{type: :eof} | _]} = ctx), do: ctx
+  defp parse_statement(%{tokens: []} = ctx), do: ctx
+  defp parse_statement(%{tokens: [%Token{type: :eof} | _]} = ctx), do: ctx
 
-  defp handle_statement(%{tokens: [%Token{type: :print} | tokens]} = ctx),
-    do: handle_print_statement(%{ctx | tokens: tokens})
+  defp parse_statement(%{tokens: [%Token{type: :print} | tokens]} = ctx),
+    do: parse_print_statement(%{ctx | tokens: tokens})
 
-  defp handle_statement(%{tokens: [%Token{type: :left_brace} | tokens]} = ctx),
-    do: handle_block(%{ctx | tokens: tokens})
+  defp parse_statement(%{tokens: [%Token{type: :left_brace} | tokens]} = ctx),
+    do: parse_block(%{ctx | tokens: tokens})
 
-  defp handle_statement(%{tokens: [%Token{type: :right_brace} | tokens]} = ctx),
+  defp parse_statement(%{tokens: [%Token{type: :right_brace} | tokens]} = ctx),
     do: %{ctx | tokens: tokens}
 
-  defp handle_statement(%{tokens: [%Token{type: :if} | tokens]} = ctx),
-    do: handle_if_statement(%{ctx | tokens: tokens})
+  defp parse_statement(%{tokens: [%Token{type: :if} | tokens]} = ctx),
+    do: parse_if_statement(%{ctx | tokens: tokens})
 
-  defp handle_statement(%{tokens: [%Token{type: :while} | tokens]} = ctx),
-    do: handle_while_statement(%{ctx | tokens: tokens})
+  defp parse_statement(%{tokens: [%Token{type: :while} | tokens]} = ctx),
+    do: parse_while_statement(%{ctx | tokens: tokens})
 
-  defp handle_statement(%{tokens: [%Token{type: :for} | tokens]} = ctx),
-    do: handle_for_statement(%{ctx | tokens: tokens})
+  defp parse_statement(%{tokens: [%Token{type: :for} | tokens]} = ctx),
+    do: parse_for_statement(%{ctx | tokens: tokens})
 
-  defp handle_statement(%{tokens: [%Token{type: :return} | _]} = ctx),
-    do: handle_return_statment(ctx)
+  defp parse_statement(%{tokens: [%Token{type: :return} | _]} = ctx),
+    do: parse_return_statment(ctx)
 
-  defp handle_statement(ctx) do
-    {expr, ctx} = handle_expression(ctx)
+  defp parse_statement(ctx) do
+    {expr, ctx} = parse_expression(ctx)
     {_, ctx} = expect_semicolon(ctx, "expression")
     add_statement(ctx, {:expr_stmt, expr})
   end
 
-  defp handle_return_statment(ctx) do
+  defp parse_return_statment(ctx) do
     {keyword, %{tokens: [current | _]} = ctx} = next_token(ctx)
 
     {value, ctx} =
       if type_match(current, :semicolon) do
         {nil, ctx}
       else
-        handle_expression(ctx)
+        parse_expression(ctx)
       end
 
     {_, ctx} = expect_semicolon(ctx, "return value")
@@ -344,23 +342,23 @@ defmodule Ilox.Parser do
     add_statement(ctx, {:return_stmt, keyword, value})
   end
 
-  defp handle_print_statement(ctx) do
-    {expr, ctx} = handle_expression(ctx)
+  defp parse_print_statement(ctx) do
+    {expr, ctx} = parse_expression(ctx)
     {_, ctx} = expect_semicolon(ctx, "value")
     add_statement(ctx, {:print_stmt, expr})
   end
 
-  defp handle_if_statement(ctx) do
+  defp parse_if_statement(ctx) do
     {_, ctx} = expect_left_paren(ctx, "if")
-    {condition, ctx} = handle_expression(ctx)
+    {condition, ctx} = parse_expression(ctx)
     {_, ctx} = expect_right_paren(ctx, "'if' condition")
 
-    {then_branch, %{tokens: [current | _]} = ctx} = handle_nested_statement(ctx)
+    {then_branch, %{tokens: [current | _]} = ctx} = parse_nested_statement(ctx)
 
     {else_branch, ctx} =
       if type_match(current, :else) do
         {_, ctx} = next_token(ctx)
-        handle_nested_statement(ctx)
+        parse_nested_statement(ctx)
       else
         {nil, ctx}
       end
@@ -368,72 +366,60 @@ defmodule Ilox.Parser do
     add_statement(ctx, {:if_stmt, condition, then_branch, else_branch})
   end
 
-  defp handle_while_statement(ctx) do
+  defp parse_while_statement(ctx) do
     {_, ctx} = expect_left_paren(ctx, "while")
-    {condition, ctx} = handle_expression(ctx)
+    {condition, ctx} = parse_expression(ctx)
     {_, ctx} = expect_right_paren(ctx, "'while' condition")
 
-    {body, ctx} = handle_nested_statement(ctx)
+    {body, ctx} = parse_nested_statement(ctx)
 
     add_statement(ctx, {:while_stmt, condition, body})
   end
 
-  defp handle_for_statement(ctx) do
-    {_, %{tokens: [current | tokens]} = ctx} = expect_left_paren(ctx, "for")
-
-    {initializer, %{tokens: [current | _]} = ctx} =
-      cond do
-        type_match(current, :semicolon) ->
-          {nil, %{ctx | tokens: tokens}}
-
-        type_match(current, :var) ->
-          %{statements: [current | statements]} =
-            ctx = handle_declaration(:var, %{ctx | tokens: tokens, break: ctx.break + 1})
-
-          {current, %{ctx | statements: statements}}
-
-        true ->
-          handle_expression(ctx)
-      end
-
-    {condition, ctx} =
-      if type_match(current, :semicolon) do
-        {{:literal_expr, true}, ctx}
-      else
-        handle_expression(%{ctx | break: ctx.break + 1})
-      end
-
-    {_, %{tokens: [current | _]} = ctx} = expect_semicolon(ctx, "loop condition")
-
-    {increment, ctx} =
-      if type_match(current, :right_paren) do
-        {nil, ctx}
-      else
-        handle_expression(ctx)
-      end
-
+  defp parse_for_statement(ctx) do
+    {_, ctx} = expect_left_paren(ctx, "for")
+    {initializer, ctx} = parse_for_initializer(ctx)
+    {condition, ctx} = parse_for_condition(ctx)
+    {_, ctx} = expect_semicolon(ctx, "loop condition")
+    {increment, ctx} = parse_for_increment(ctx)
     {_, ctx} = expect_right_paren(ctx, "'for' clauses")
-
-    {body, ctx} = handle_nested_statement(ctx)
-
-    body =
-      case body do
-        _ when is_nil(increment) -> body
-        {:block, statements} -> {:block, statements ++ [increment]}
-        statement -> {:block, [statement, increment]}
-      end
-
-    body = {:while_stmt, condition, body}
-
-    body =
-      if is_nil(initializer) do
-        body
-      else
-        {:block, [initializer, body]}
-      end
-
+    {body, ctx} = parse_nested_statement(ctx)
+    body = {:while_stmt, condition, desugar_for_increment(body, increment)}
+    body = desugar_for_initializer(initializer, body)
     add_statement(ctx, body)
   end
+
+  defp parse_for_initializer(%{tokens: [%Token{type: :semicolon} | tokens]} = ctx),
+    do: {nil, %{ctx | tokens: tokens}}
+
+  defp parse_for_initializer(%{tokens: [%Token{type: :var} | tokens]} = ctx) do
+    %{statements: [current | statements]} =
+      ctx =
+      parse_declaration(:var, %{ctx | tokens: tokens, break: ctx.break + 1})
+
+    {current, %{ctx | statements: statements}}
+  end
+
+  defp parse_for_initializer(ctx), do: parse_expression(ctx)
+
+  defp desugar_for_initializer(nil, body), do: body
+  defp desugar_for_initializer(initializer, body), do: {:block, [initializer, body]}
+
+  defp parse_for_condition(%{tokens: [%Token{type: :semicolon} | _]} = ctx),
+    do: {{:literal_expr, true}, ctx}
+
+  defp parse_for_condition(ctx), do: parse_expression(%{ctx | break: ctx.break + 1})
+
+  defp parse_for_increment(%{tokens: [%Token{type: :right_paren} | _]} = ctx), do: {nil, ctx}
+
+  defp parse_for_increment(ctx) do
+    {increment, ctx} = parse_expression(ctx)
+    {{:expr_stmt, increment}, ctx}
+  end
+
+  defp desugar_for_increment(body, nil), do: body
+  defp desugar_for_increment({:block, body}, increment), do: {:block, body ++ [increment]}
+  defp desugar_for_increment(body, increment), do: {:block, [body, increment]}
 
   # Nested statement handling is required for flow control, where an execution branch may
   # be a single statement or a block of statements. Recursive parsing is greedy (all
@@ -444,12 +430,12 @@ defmodule Ilox.Parser do
   #
   # Statement handlers only return the context, and the most recent statement added would
   # be what we need to get, so we're not going to stack scope processing like we do
-  # in `handle_block/1`, but we will cheat and just pop the most recent statement off the
+  # in `parse_block/1`, but we will cheat and just pop the most recent statement off the
   # front of the list for processing.
   #
-  # We set `break: true` before calling `handle_statement/1` so that we don't recurse back
-  defp handle_nested_statement(ctx) do
-    %{statements: [current | statements]} = ctx = handle_statement(%{ctx | break: ctx.break + 1})
+  # We set `break: true` before calling `parse_statement/1` so that we don't recurse back
+  defp parse_nested_statement(ctx) do
+    %{statements: [current | statements]} = ctx = parse_statement(%{ctx | break: ctx.break + 1})
     {current, %{ctx | statements: statements}}
   end
 
@@ -460,17 +446,17 @@ defmodule Ilox.Parser do
   # tokens so that we are forced to reset it after.
   #
   # This works because the right brace is a breakpoint and is handled by
-  # `handle_statement/1`. To prevent issues in processing nested statements, we set
+  # `parse_statement/1`. To prevent issues in processing nested statements, we set
   # `single: false` on the inner context.
   #
   # The inner context starts with empty `statements`, because the result will be wrapped
   # in a block entry.
-  defp handle_block(ctx) do
+  defp parse_block(ctx) do
     outer_ctx = %{ctx | tokens: []}
     inner_ctx = %{ctx | statements: [], scopes: [outer_ctx | ctx.scopes], break: 0}
 
     # Process the declarations inside the block.
-    inner_ctx = handle_declaration(inner_ctx)
+    inner_ctx = parse_declaration(inner_ctx)
 
     # Pop the outer context from the scopes stack, and then set the tokens and errors
     # from the inner context to recognize what has been consumed. The existing statements
@@ -483,21 +469,21 @@ defmodule Ilox.Parser do
     add_statement(outer_ctx, {:block, Enum.reverse(inner_ctx.statements)})
   end
 
-  defp handle_expression(%{tokens: []} = ctx),
-    do: handle_expression(%{ctx | tokens: [Token.eof()]})
+  defp parse_expression(%{tokens: []} = ctx),
+    do: parse_expression(%{ctx | tokens: [Token.eof()]})
 
-  defp handle_expression(%{tokens: [%Token{type: :eof} = token | _]} = ctx) do
+  defp parse_expression(%{tokens: [%Token{type: :eof} = token | _]} = ctx) do
     raise Ilox.ParserError, token: token, message: "Expect expression.", ctx: ctx
   end
 
-  defp handle_expression(ctx), do: handle_assignment(ctx)
+  defp parse_expression(ctx), do: parse_assignment(ctx)
 
-  defp handle_assignment(ctx) do
-    {expr, %{tokens: [current | _]} = ctx} = handle_or(ctx)
+  defp parse_assignment(ctx) do
+    {expr, %{tokens: [current | _]} = ctx} = parse_or(ctx)
 
     if type_match(current, :equal) do
       {equals, ctx} = next_token(ctx)
-      {value, ctx} = handle_assignment(ctx)
+      {value, ctx} = parse_assignment(ctx)
 
       case expr do
         {:var_expr, name} ->
@@ -514,50 +500,50 @@ defmodule Ilox.Parser do
     end
   end
 
-  defp handle_or(ctx) do
-    {expr, ctx} = handle_and(ctx)
-    handle_binary_match(ctx, expr, [:or], &handle_and/1, :logical_expr)
+  defp parse_or(ctx) do
+    {expr, ctx} = parse_and(ctx)
+    parse_binary_match(ctx, expr, [:or], &parse_and/1, :logical_expr)
   end
 
-  defp handle_and(ctx) do
-    {expr, ctx} = handle_equality(ctx)
-    handle_binary_match(ctx, expr, [:and], &handle_equality/1, :logical_expr)
+  defp parse_and(ctx) do
+    {expr, ctx} = parse_equality(ctx)
+    parse_binary_match(ctx, expr, [:and], &parse_equality/1, :logical_expr)
   end
 
-  defp handle_equality(ctx) do
-    {expr, ctx} = handle_comparison(ctx)
-    handle_binary_match(ctx, expr, [:bang_equal, :equal_equal], &handle_comparison/1)
+  defp parse_equality(ctx) do
+    {expr, ctx} = parse_comparison(ctx)
+    parse_binary_match(ctx, expr, [:bang_equal, :equal_equal], &parse_comparison/1)
   end
 
-  defp handle_comparison(ctx) do
-    {expr, ctx} = handle_term(ctx)
+  defp parse_comparison(ctx) do
+    {expr, ctx} = parse_term(ctx)
 
-    handle_binary_match(
+    parse_binary_match(
       ctx,
       expr,
       [:greater, :greater_equal, :less, :less_equal],
-      &handle_term/1
+      &parse_term/1
     )
   end
 
-  defp handle_term(ctx) do
-    {expr, ctx} = handle_factor(ctx)
-    handle_binary_match(ctx, expr, [:minus, :plus], &handle_factor/1)
+  defp parse_term(ctx) do
+    {expr, ctx} = parse_factor(ctx)
+    parse_binary_match(ctx, expr, [:minus, :plus], &parse_factor/1)
   end
 
-  defp handle_factor(ctx) do
-    {expr, ctx} = handle_unary(ctx)
-    handle_binary_match(ctx, expr, [:slash, :star], &handle_unary/1)
+  defp parse_factor(ctx) do
+    {expr, ctx} = parse_unary(ctx)
+    parse_binary_match(ctx, expr, [:slash, :star], &parse_unary/1)
   end
 
-  defp handle_unary(%{tokens: []} = ctx), do: {nil, ctx}
-  defp handle_unary(%{tokens: [%Token{type: :eof} | _]} = ctx), do: {nil, ctx}
+  defp parse_unary(%{tokens: []} = ctx), do: {nil, ctx}
+  defp parse_unary(%{tokens: [%Token{type: :eof} | _]} = ctx), do: {nil, ctx}
 
-  defp handle_unary(%{tokens: [current | _]} = ctx) do
+  defp parse_unary(%{tokens: [current | _]} = ctx) do
     if type_match(current, [:bang, :minus]) do
       {operator, ctx} = next_token(ctx)
 
-      case handle_unary(ctx) do
+      case parse_unary(ctx) do
         {nil, ctx} ->
           raise Ilox.ParserError,
             token: current,
@@ -569,32 +555,32 @@ defmodule Ilox.Parser do
           {{:unary_expr, operator, right}, ctx}
       end
     else
-      handle_call(ctx)
+      parse_call(ctx)
     end
   end
 
-  defp handle_call(%{tokens: []} = ctx), do: {nil, ctx}
-  defp handle_call(%{tokens: [%Token{type: :eof} | _]} = ctx), do: {nil, ctx}
+  defp parse_call(%{tokens: []} = ctx), do: {nil, ctx}
+  defp parse_call(%{tokens: [%Token{type: :eof} | _]} = ctx), do: {nil, ctx}
 
-  defp handle_call(ctx) do
-    {expr, %{tokens: [current | tokens]} = ctx} = handle_primary(ctx)
+  defp parse_call(ctx) do
+    {expr, %{tokens: [current | tokens]} = ctx} = parse_primary(ctx)
 
     if type_match(current, :left_paren) do
-      handle_call(%{ctx | tokens: tokens}, expr)
+      parse_call(%{ctx | tokens: tokens}, expr)
     else
       {expr, ctx}
     end
   end
 
-  defp handle_call(ctx, callee) do
-    {args, %{tokens: [current | _]} = ctx} = handle_call_args(ctx)
+  defp parse_call(ctx, callee) do
+    {args, %{tokens: [current | _]} = ctx} = parse_call_args(ctx)
     count = Enum.count(args)
     ctx = check_arity(ctx, count, current, "arguments")
     {closing, %{tokens: [current | tokens]} = ctx} = expect_right_paren(ctx, "arguments")
     call = {:call, callee, args, count, closing}
 
     if type_match(current, :left_paren) do
-      handle_call(%{ctx | tokens: tokens}, call)
+      parse_call(%{ctx | tokens: tokens}, call)
     else
       {call, ctx}
     end
@@ -608,50 +594,50 @@ defmodule Ilox.Parser do
 
   defp check_arity(ctx, _count, _token, _type), do: ctx
 
-  defp handle_call_args(%{tokens: []} = ctx), do: {[], ctx}
-  defp handle_call_args(%{tokens: [%Token{type: :eof} | _]} = ctx), do: {[], ctx}
-  defp handle_call_args(ctx), do: handle_call_args(ctx, [])
+  defp parse_call_args(%{tokens: []} = ctx), do: {[], ctx}
+  defp parse_call_args(%{tokens: [%Token{type: :eof} | _]} = ctx), do: {[], ctx}
+  defp parse_call_args(ctx), do: parse_call_args(ctx, [])
 
-  defp handle_call_args(%{tokens: [%Token{type: :right_paren} | _]} = ctx, args),
+  defp parse_call_args(%{tokens: [%Token{type: :right_paren} | _]} = ctx, args),
     do: {Enum.reverse(args), ctx}
 
-  defp handle_call_args(ctx, args) do
-    {arg, %{tokens: [current | tokens]} = ctx} = handle_expression(ctx)
+  defp parse_call_args(ctx, args) do
+    {arg, %{tokens: [current | tokens]} = ctx} = parse_expression(ctx)
     args = [arg | args]
 
     if type_match(current, :comma) do
-      handle_call_args(%{ctx | tokens: tokens}, args)
+      parse_call_args(%{ctx | tokens: tokens}, args)
     else
       {Enum.reverse(args), ctx}
     end
   end
 
-  defp handle_primary(%{tokens: []} = ctx), do: {nil, ctx}
-  defp handle_primary(%{tokens: [%Token{type: :eof} | _]} = ctx), do: {nil, ctx}
+  defp parse_primary(%{tokens: []} = ctx), do: {nil, ctx}
+  defp parse_primary(%{tokens: [%Token{type: :eof} | _]} = ctx), do: {nil, ctx}
 
-  defp handle_primary(%{tokens: [%Token{type: :Qfalse} | tokens]} = ctx),
+  defp parse_primary(%{tokens: [%Token{type: :Qfalse} | tokens]} = ctx),
     do: {{:literal_expr, false}, %{ctx | tokens: tokens}}
 
-  defp handle_primary(%{tokens: [%Token{type: :Qnil} | tokens]} = ctx),
+  defp parse_primary(%{tokens: [%Token{type: :Qnil} | tokens]} = ctx),
     do: {{:literal_expr, nil}, %{ctx | tokens: tokens}}
 
-  defp handle_primary(%{tokens: [%Token{type: :Qtrue} | tokens]} = ctx),
+  defp parse_primary(%{tokens: [%Token{type: :Qtrue} | tokens]} = ctx),
     do: {{:literal_expr, true}, %{ctx | tokens: tokens}}
 
-  defp handle_primary(%{tokens: [%Token{type: type} = current | tokens]} = ctx)
+  defp parse_primary(%{tokens: [%Token{type: type} = current | tokens]} = ctx)
        when type in [:number, :string],
        do: {{:literal_expr, current}, %{ctx | tokens: tokens}}
 
-  defp handle_primary(%{tokens: [%Token{type: :identifier} = current | tokens]} = ctx),
+  defp parse_primary(%{tokens: [%Token{type: :identifier} = current | tokens]} = ctx),
     do: {{:var_expr, current}, %{ctx | tokens: tokens}}
 
-  defp handle_primary(%{tokens: [%Token{type: :left_paren} | tokens]} = ctx) do
-    {expr, ctx} = handle_expression(%{ctx | tokens: tokens})
+  defp parse_primary(%{tokens: [%Token{type: :left_paren} | tokens]} = ctx) do
+    {expr, ctx} = parse_expression(%{ctx | tokens: tokens})
     {_, ctx} = expect_right_paren(ctx, "expression")
     {{:group_expr, expr}, ctx}
   end
 
-  defp handle_primary(%{tokens: [current | _]} = ctx) do
+  defp parse_primary(%{tokens: [current | _]} = ctx) do
     raise Ilox.ParserError, token: current, message: "Expect expression.", ctx: ctx
   end
 
@@ -671,12 +657,12 @@ defmodule Ilox.Parser do
       ctx: ctx
   end
 
-  defp handle_binary_match(%{tokens: []} = ctx, expr, _types, _consumer), do: {expr, ctx}
+  defp parse_binary_match(%{tokens: []} = ctx, expr, _types, _consumer), do: {expr, ctx}
 
-  defp handle_binary_match(%{tokens: [%Token{type: :eof} | _]} = ctx, expr, _types, _consumer),
+  defp parse_binary_match(%{tokens: [%Token{type: :eof} | _]} = ctx, expr, _types, _consumer),
     do: {expr, ctx}
 
-  defp handle_binary_match(
+  defp parse_binary_match(
          %{tokens: [current | _]} = ctx,
          expr,
          types,
@@ -696,7 +682,7 @@ defmodule Ilox.Parser do
 
         {right, ctx} ->
           expr = {expr_type, expr, operator, right}
-          handle_binary_match(ctx, expr, types, consumer, expr_type)
+          parse_binary_match(ctx, expr, types, consumer, expr_type)
       end
     else
       {expr, ctx}
@@ -707,7 +693,7 @@ defmodule Ilox.Parser do
     do: %{ctx | statements: [statement | ctx.statements], break: ctx.break - 1}
 
   defp add_statement(%{break: 0} = ctx, statement),
-    do: handle_declaration(%{ctx | statements: [statement | ctx.statements]})
+    do: parse_declaration(%{ctx | statements: [statement | ctx.statements]})
 
   defp synchronize(ctx) do
     case next_token(ctx) do

@@ -10,8 +10,16 @@ defmodule Ilox.Scanner do
 
   def scan(source) when is_binary(source) do
     case scan_next_token(source) do
-      %{errors: [], tokens: tokens} -> {:ok, tokens}
-      %{errors: errors} -> {:error, :scanner, Enum.reverse(errors)}
+      %{errors: [], tokens: tokens} ->
+        tokens =
+          tokens
+          |> Enum.with_index()
+          |> Enum.map(fn {token, id} -> %{token | id: id} end)
+
+        {:ok, tokens}
+
+      %{errors: errors} ->
+        {:error, :scanner, Enum.reverse(errors)}
     end
   end
 

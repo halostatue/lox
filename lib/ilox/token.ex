@@ -54,9 +54,10 @@ defmodule Ilox.Token do
            lox_standalone() | lox_compound() | lox_literal() | lox_keyword() | lox_terminal()
 
   @enforce_keys [:type, :lexeme, :line]
-  defstruct [:type, :lexeme, :literal, :line]
+  defstruct [:type, :lexeme, :literal, :line, :id]
 
   @type! t :: %__MODULE__{
+           id: nil | non_neg_integer(),
            type: lox_tokens(),
            line: non_neg_integer(),
            lexeme: String.t(),
@@ -70,82 +71,16 @@ defmodule Ilox.Token do
            literal :: term()
          ) :: t()
   def new(type, line, lexeme, literal \\ nil),
-    do: %__MODULE__{lexeme: lexeme, line: line, literal: literal, type: type}
+    do: %__MODULE__{
+      lexeme: lexeme,
+      line: line,
+      literal: literal,
+      type: type
+    }
 
   def eof(line \\ 0), do: new(:eof, line, "")
 
-  @lookup %{
-    :left_paren => "(",
-    :right_paren => ")",
-    :left_brace => "{",
-    :right_brace => "}",
-    :comma => ",",
-    :dot => ".",
-    :minus => "-",
-    :plus => "+",
-    :semicolon => ";",
-    :slash => "/",
-    :star => "*",
-    :bang => "!",
-    :bang_equal => "!=",
-    :equal => "=",
-    :equal_equal => "==",
-    :greater => ">",
-    :greater_equal => ">=",
-    :less => "<",
-    :less_equal => "<=",
-    :and => "and",
-    :class => "class",
-    :else => "else",
-    :Qfalse => "false",
-    :fun => "fun",
-    :for => "for",
-    :if => "if",
-    :Qnil => "nil",
-    :or => "or",
-    :print => "print",
-    :return => "return",
-    :super => "super",
-    :this => "this",
-    :Qtrue => "true",
-    :var => "var",
-    :while => "while"
-  }
-
-  def inspect_tokens(input, opts \\ [])
-
-  def inspect_tokens({value, %{tokens: tokens} = ctx}, opts) do
-    IO.inspect({value, view(tokens)}, opts)
-
-    {value, ctx}
-  end
-
-  def inspect_tokens(%{tokens: tokens} = ctx, opts) do
-    tokens
-    |> view()
-    |> IO.inspect(opts)
-
-    ctx
-  end
-
-  def view(tokens) when is_list(tokens) do
-    tokens
-    |> Enum.map(&view/1)
-    |> Enum.join(" ")
-  end
-
-  # "Token.eof(#{line})"
-  def view(%{type: :eof}), do: "␄"
-  def view(%{type: :identifier, lexeme: lexeme}), do: lexeme
-  def view(%{type: :string, literal: literal}), do: inspect(literal)
-  def view(%{type: :number, literal: literal}), do: to_string(literal)
-
-  def view(%{type: type} = token) do
-    @lookup[type] || inspect(token)
-  end
-
   defimpl Inspect do
-    # "Token.eof(#{line})"
     def inspect(%{type: :eof, line: line}, _opts), do: "Token.eof(#{line})"
 
     def inspect(token, _opts) do

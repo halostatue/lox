@@ -7,6 +7,7 @@ defmodule Ilox.Interpreter do
   alias Ilox.Env
   alias Ilox.Errors
   alias Ilox.Parser
+  alias Ilox.Resolver
   alias Ilox.Token
 
   import Ilox.Guards
@@ -33,11 +34,12 @@ defmodule Ilox.Interpreter do
   end
 
   def run(env, [head | _] = statements) when is_tuple(head) do
-    env
-    |> create_env()
-    |> handle_statements(statements)
+    env = create_env(env)
 
-    :ok
+    with {:ok, env} <- Resolver.resolve(env, statements),
+         %Env{} <- exec_statements(env, statements) do
+      :ok
+    end
   rescue
     e in Ilox.RuntimeError ->
       {:error, :runtime, Exception.message(e)}
@@ -65,64 +67,117 @@ defmodule Ilox.Interpreter do
     {_env, value} =
       env
       |> create_env()
-      |> handle_expression(expr)
+      |> eval_expression(expr)
 
-    {:ok, inspectify(value)}
+    {:ok, inspect_expression_value(value)}
   rescue
     e in Ilox.RuntimeError ->
       {:error, :runtime, Exception.message(e)}
   end
 
   @doc false
-  def execute_function_body(env, {:block, statements}) do
-    env = handle_statements(env, statements)
+  def eval_function_body(env, {:block, _body} = block) do
+    env = exec_statement(env, block)
     {env, nil}
   end
 
-  defp handle_statements(env, []), do: env
+  @spec exec_statements(Env.t(), list(Parser.declaration() | Parser.statement())) :: Env.t()
+  defp exec_statements(env, []), do: env
 
-  defp handle_statements(env, [{:return_stmt, _, value} | _]) do
+  defp exec_statements(env, [statement | statements]) do
+    env
+    |> exec_statement(statement)
+    |> exec_statements(statements)
+  end
+
+  @spec exec_statement(Env.t(), Parser.declaration()) :: Env.t()
+  defp exec_statement(env, {:return_stmt, _, value}) do
+    {env, value} = if value, do: eval_expression(env, value), else: {env, nil}
+    throw({env, value})
+  end
+
+  defp exec_statement(env, {:var_decl, name, initializer}) do
     {env, value} =
-      if value do
-        handle_expression(env, value)
+      if initializer do
+        eval_expression(env, initializer)
       else
         {env, nil}
       end
 
-    raise Ilox.ReturnValue, env: env, value: value
+    {env, _value} = Env.define(env, name, value)
+    env
   end
 
-  defp handle_statements(env, [current | statements]) do
-    {env, _} = handle_expression(env, current)
-    handle_statements(env, statements)
+  defp exec_statement(env, {:expr_stmt, expr}) do
+    {env, _} = eval_expression(env, expr)
+    env
   end
 
-  defp inspectify(nil), do: "nil"
-  defp inspectify(value) when is_binary(value), do: ~s("#{value}")
-  defp inspectify(value), do: stringify(value)
-
-  defp stringify(nil), do: ""
-
-  defp stringify(value) when is_float(value) do
-    value
-    |> :erlang.float_to_binary([:short, :compact])
-    |> String.replace_suffix(".0", "")
+  defp exec_statement(env, {:print_stmt, expr}) do
+    {env, value} = eval_expression(env, expr)
+    env.print.(stringify_expression_value(value))
+    env
   end
 
-  defp stringify(value), do: to_string(value)
+  defp exec_statement(env, {:block, statements}) do
+    {env, scope_id} = Env.push_scope(env)
 
-  defp handle_expression(env, nil), do: {env, nil}
+    try do
+      env = exec_statements(env, statements)
+      Env.pop_scope(env, scope_id)
+    catch
+      {env, value} ->
+        throw({Env.pop_scope(env, scope_id), value})
+    end
+  end
 
-  defp handle_expression(env, {:literal_expr, value}) when value in [true, false, nil],
+  defp exec_statement(env, {:if_stmt, condition, then_branch, else_branch}) do
+    {env, condition} = eval_expression(env, condition)
+
+    case condition do
+      true -> exec_statement(env, then_branch)
+      false when is_nil(else_branch) -> env
+      false -> exec_statement(env, else_branch)
+    end
+  end
+
+  defp exec_statement(env, {:while_stmt, condition, body} = while) do
+    {env, condition} = eval_expression(env, condition)
+
+    if condition do
+      env
+      |> exec_statement(body)
+      |> exec_statement(while)
+    else
+      env
+    end
+  end
+
+  defp exec_statement(env, {:function, name, _params, arity, _body} = fun) do
+    fun =
+      Callable.new(
+        arity: arity,
+        decl: fun,
+        to_string: "<fn #{name.lexeme}>",
+        closure_id: Env.current_scope(env)
+      )
+
+    {env, _} = Env.define(env, name, fun)
+    env
+  end
+
+  # defp eval_expression(env, nil), do: {env, nil}
+
+  defp eval_expression(env, {:group_expr, expr}), do: eval_expression(env, expr)
+
+  defp eval_expression(env, {:literal_expr, value}) when value in [true, false, nil],
     do: {env, value}
 
-  defp handle_expression(env, {:literal_expr, %{literal: literal}}), do: {env, literal}
-  defp handle_expression(env, {:group_expr, expr}), do: handle_expression(env, expr)
+  defp eval_expression(env, {:literal_expr, %{literal: literal}}), do: {env, literal}
 
-  defp handle_expression(env, {:unary_expr, %Token{} = operator, right}) do
-    {env, right} = handle_expression(env, right)
+  defp eval_expression(env, {:unary_expr, %Token{} = operator, right}) do
+    {env, right} = eval_expression(env, right)
 
-    # is_truthy is not required, as Elixir values are truthy the way Lox requires
     value =
       case operator.type do
         :minus when is_number(right) ->
@@ -138,15 +193,15 @@ defmodule Ilox.Interpreter do
           !right
 
         _ ->
-          nil
+          raise "Invalid unary expression: #{inspect(operator.type)}(#{inspect(right)})."
       end
 
     {env, value}
   end
 
-  defp handle_expression(env, {:binary_expr, left, %Token{} = operator, right}) do
-    {env, left} = handle_expression(env, left)
-    {env, right} = handle_expression(env, right)
+  defp eval_expression(env, {:binary_expr, left, %Token{} = operator, right}) do
+    {env, left} = eval_expression(env, left)
+    {env, right} = eval_expression(env, right)
 
     types =
       cond do
@@ -155,93 +210,30 @@ defmodule Ilox.Interpreter do
         true -> nil
       end
 
-    {env, handle_operator(operator, left, right, types)}
+    {env, eval_operator(operator, left, right, types)}
   end
 
-  defp handle_expression(env, {:logical_expr, left, %Token{type: operator}, right})
-       when operator in [:or, :and] do
-    {env, left} = handle_expression(env, left)
+  defp eval_expression(env, {:var_expr, name} = expr), do: {env, Env.get(env, expr, name)}
 
-    cond do
-      operator == :or and !!left -> {env, left}
-      operator == :and and !left -> {env, left}
-      true -> handle_expression(env, right)
-    end
-  end
-
-  defp handle_expression(env, {:var_expr, name}), do: {env, Env.get(env, name)}
-
-  defp handle_expression(env, {:var_decl, name, initializer}) do
-    {env, value} =
-      if initializer do
-        handle_expression(env, initializer)
-      else
-        {env, nil}
-      end
-
-    Env.define(env, name, value)
-  end
-
-  defp handle_expression(env, {:assign_expr, name, value}) do
-    {env, value} = handle_expression(env, value)
+  defp eval_expression(env, {:assign_expr, name, value}) do
+    {env, value} = eval_expression(env, value)
     Env.assign(env, name, value)
   end
 
-  defp handle_expression(env, {:expr_stmt, expr}) do
-    {env, _} = handle_expression(env, expr)
-    {env, nil}
-  end
+  defp eval_expression(env, {:logical_expr, left, %Token{type: operator}, right})
+       when operator in [:or, :and] do
+    {env, left} = eval_expression(env, left)
+    truthy? = !!left
 
-  defp handle_expression(env, {:print_stmt, expr}) do
-    {env, value} = handle_expression(env, expr)
-
-    env.print.(stringify(value))
-
-    {env, nil}
-  end
-
-  defp handle_expression(env, {:block, statements}) do
-    env =
-      env
-      |> Env.push_scope()
-      |> handle_statements(statements)
-      |> Env.pop_scope()
-
-    {env, nil}
-  end
-
-  defp handle_expression(env, {:if_stmt, condition, then_branch, else_branch}) do
-    {env, value} = handle_expression(env, condition)
-    env = handle_statements(env, [if(value, do: then_branch, else: else_branch)])
-    {env, nil}
-  end
-
-  defp handle_expression(env, {:while_stmt, condition, body} = while) do
-    {env, test} = handle_expression(env, condition)
-
-    if test do
-      env = handle_statements(env, [body])
-      handle_expression(env, while)
-    else
-      {env, nil}
+    case {operator, truthy?} do
+      {:or, true} -> {env, left}
+      {:and, false} -> {env, left}
+      _ -> eval_expression(env, right)
     end
   end
 
-  defp handle_expression(env, {:function, name, _params, arity, _body} = fun) do
-    fun =
-      Callable.new(
-        arity: arity,
-        decl: fun,
-        to_string: "<fn #{name.lexeme}>",
-        closure_id: Env.current_scope(env)
-      )
-
-    {env, _} = Env.define(env, name, fun)
-    {env, nil}
-  end
-
-  defp handle_expression(env, {:call, callee, arguments, argc, closing}) do
-    {env, callee} = handle_expression(env, callee)
+  defp eval_expression(env, {:call, callee, arguments, argc, closing}) do
+    {env, callee} = eval_expression(env, callee)
 
     if !is_callable(callee) do
       raise Ilox.RuntimeError, token: closing, message: "Can only call functions and classes."
@@ -255,33 +247,31 @@ defmodule Ilox.Interpreter do
 
     {env, arguments} =
       Enum.reduce(arguments, {env, []}, fn arg, {env, args} ->
-        {env, arg} = handle_expression(env, arg)
+        {env, arg} = eval_expression(env, arg)
         {env, [arg | args]}
       end)
 
-    arguments = Enum.reverse(arguments)
-
-    Callable.call(env, callee, arguments)
+    Callable.call(env, callee, Enum.reverse(arguments))
   end
 
   # Comparison operators *must* be restricted to numbers, because all values in the BEAM
   # are comparables.
-  defp handle_operator(%Token{type: :minus}, left, right, :number), do: left - right
-  defp handle_operator(%Token{type: :slash}, left, right, :number), do: left / right
-  defp handle_operator(%Token{type: :star}, left, right, :number), do: left * right
-  defp handle_operator(%Token{type: :plus}, left, right, :number), do: left + right
-  defp handle_operator(%Token{type: :plus}, left, right, :binary), do: left <> right
-  defp handle_operator(%Token{type: :greater}, left, right, :number), do: left > right
-  defp handle_operator(%Token{type: :greater_equal}, left, right, :number), do: left >= right
-  defp handle_operator(%Token{type: :less}, left, right, :number), do: left < right
-  defp handle_operator(%Token{type: :less_equal}, left, right, :number), do: left <= right
-  defp handle_operator(%Token{type: :bang_equal}, left, right, _), do: left != right
-  defp handle_operator(%Token{type: :equal_equal}, left, right, _), do: left == right
+  defp eval_operator(%Token{type: :minus}, left, right, :number), do: left - right
+  defp eval_operator(%Token{type: :slash}, left, right, :number), do: left / right
+  defp eval_operator(%Token{type: :star}, left, right, :number), do: left * right
+  defp eval_operator(%Token{type: :plus}, left, right, :number), do: left + right
+  defp eval_operator(%Token{type: :plus}, left, right, :binary), do: left <> right
+  defp eval_operator(%Token{type: :greater}, left, right, :number), do: left > right
+  defp eval_operator(%Token{type: :greater_equal}, left, right, :number), do: left >= right
+  defp eval_operator(%Token{type: :less}, left, right, :number), do: left < right
+  defp eval_operator(%Token{type: :less_equal}, left, right, :number), do: left <= right
+  defp eval_operator(%Token{type: :bang_equal}, left, right, _), do: left != right
+  defp eval_operator(%Token{type: :equal_equal}, left, right, _), do: left == right
 
   # interpreter test: :minus, :slash, :star, :greater, :greater_equal, :less, and
   # :less_equal must raise errors on non-number in either left or right. :plus must raise
   # errors when both operands aren't both numbers or both strings.
-  defp handle_operator(operator, _left, _right, nil),
+  defp eval_operator(operator, _left, _right, nil),
     do: raise(Ilox.RuntimeError, invalid_operands!(operator))
 
   defp invalid_operands!(%Token{type: type} = token) when type == :plus,
@@ -296,15 +286,18 @@ defmodule Ilox.Interpreter do
 
   defp create_env(%Env{} = env), do: env
   defp create_env(nil), do: Env.new()
-end
 
-defmodule Ilox.RuntimeError do
-  defexception [:token, :message, where: nil]
-  defdelegate message(e), to: Ilox.Errors, as: :format
-end
+  defp inspect_expression_value(nil), do: "nil"
+  defp inspect_expression_value(value) when is_binary(value), do: ~s("#{value}")
+  defp inspect_expression_value(value), do: stringify_expression_value(value)
 
-defmodule Ilox.ReturnValue do
-  defexception [:env, :value]
+  defp stringify_expression_value(nil), do: ""
 
-  def message(e), do: "Return value: #{inspect(e)}"
+  defp stringify_expression_value(value) when is_float(value) do
+    value
+    |> :erlang.float_to_binary([:short, :compact])
+    |> String.replace_suffix(".0", "")
+  end
+
+  defp stringify_expression_value(value), do: to_string(value)
 end

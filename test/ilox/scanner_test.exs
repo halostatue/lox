@@ -181,13 +181,13 @@ defmodule Ilox.ScannerTest do
     test "compound token support" do
       assert {:ok,
               [
-                Token.new(:print, 1, "print", nil),
-                Token.new(:left_paren, 1, "(", nil),
-                Token.new(:identifier, 2, "identifier", nil),
-                Token.new(:plus, 3, "+", nil),
-                Token.new(:string, 4, "\"hello\"", "hello"),
-                Token.new(:right_paren, 5, ")", nil),
-                Token.eof(7)
+                %{Token.new(:print, 1, "print", nil) | id: 0},
+                %{Token.new(:left_paren, 1, "(", nil) | id: 1},
+                %{Token.new(:identifier, 2, "identifier", nil) | id: 2},
+                %{Token.new(:plus, 3, "+", nil) | id: 3},
+                %{Token.new(:string, 4, "\"hello\"", "hello") | id: 4},
+                %{Token.new(:right_paren, 5, ")", nil) | id: 5},
+                %{Token.eof(7) | id: 6}
               ]} ==
                Scanner.scan("""
                print ( // multiline support with comments

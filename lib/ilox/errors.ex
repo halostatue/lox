@@ -21,3 +21,8 @@ defmodule Ilox.Errors do
   def where(%{type: :eof}), do: "at end"
   def where(%{lexeme: lexeme}), do: "at '#{lexeme}'"
 end
+
+defmodule Ilox.RuntimeError do
+  defexception [:token, :message, where: nil]
+  defdelegate message(e), to: Ilox.Errors, as: :format
+end

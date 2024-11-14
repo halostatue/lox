@@ -13,8 +13,9 @@ defmodule Ilox.Callable do
 
   def call(env, %__MODULE__{decl: decl, closure_id: closure_id}, arguments) do
     Env.call_with_scope(env, closure_id, fn env ->
-      {env, value} = do_call(Env.push_scope(env), decl, arguments)
-      {Env.pop_scope(env), value}
+      {env, scope_id} = Env.push_scope(env)
+      {env, value} = do_call(env, decl, arguments)
+      {Env.pop_scope(env, scope_id), value}
     end)
   end
 
@@ -40,14 +41,29 @@ defmodule Ilox.Callable do
       |> Enum.zip(arguments)
       |> Enum.reduce(env, fn {name, value}, env -> elem(Env.define(env, name, value), 0) end)
 
-    Interpreter.execute_function_body(env, body)
-  rescue
-    e in Ilox.ReturnValue ->
-      {e.env, e.value}
+    Interpreter.eval_function_body(env, body)
+  catch
+    {env, value} -> {env, value}
   end
 
   defimpl String.Chars do
     def to_string(%Ilox.Callable{to_string: value}) when is_binary(value), do: value
     def to_string(%Ilox.Callable{to_string: value}) when is_function(value, 0), do: value.()
+  end
+
+  defimpl Inspect do
+    import Inspect.Algebra
+
+    def inspect(callable, opts) do
+      concat([
+        "#Callable<",
+        to_string(callable),
+        " arity: ",
+        to_doc(callable.arity, opts),
+        " closure: ",
+        to_doc(callable.closure_id, opts),
+        ">"
+      ])
+    end
   end
 end

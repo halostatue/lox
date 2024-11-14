@@ -2,10 +2,10 @@ defmodule Ilox.InterpreterTest do
   use ExUnit.Case, async: true
   use ExUnitProperties
 
-  alias Ilox.Env
-  alias Ilox.Interpreter
-
   import Ilox.StreamData
+  import Ilox.SourceTools, only: [run: 1, run: 2]
+
+  @moduletag :focus
 
   describe "run/2: expression statements" do
     property "value == value;" do
@@ -28,13 +28,15 @@ defmodule Ilox.InterpreterTest do
             _ -> "[line 1] Error at '#{unquote(operator)}': Operands must be numbers."
           end
 
-        assert {:error, :runtime, ^message, _} = run("nil #{unquote(operator)} true;")
+        assert {:error, :runtime, errors: ^message, output: []} =
+                 run("nil #{unquote(operator)} true;")
       end
     end
 
     for input <- [true, false, nil, "string"] do
       test "-#{inspect(input)}; // error" do
-        assert {:error, :runtime, "[line 1] Error at '-': Operand must be a number.", _} =
+        assert {:error, :runtime,
+                errors: "[line 1] Error at '-': Operand must be a number.", output: []} =
                  run("-#{inspect(unquote(input))};")
       end
     end
@@ -73,7 +75,8 @@ defmodule Ilox.InterpreterTest do
     end
 
     test "nested blocks 1" do
-      assert {:error, :runtime, "[line 13] Error: Undefined variable 'value'.", ~w[1 2 1]} =
+      assert {:error, :runtime,
+              errors: "[line 13] Error: Undefined variable 'value'.", output: ~w[1 2 1]} =
                run("""
                {
                  var value = 1;
@@ -258,12 +261,20 @@ defmodule Ilox.InterpreterTest do
 
   describe "run/1: for statement" do
     test "for (var a = 2; a > 0; a = a - 1) print a;" do
-      assert {:ok, output: ["2", "1"]} = run("for (var a = 2; a > 0; a = a - 1) print a;")
+      assert {:ok, output: ["2", "1"]} =
+               run("""
+               for (var a = 2; a > 0; a = a - 1)
+                 print a;
+               """)
     end
 
     test "for (var a = 3; a > 0; a = a - 1) { print a; }" do
       assert {:ok, output: ["3", "2", "1"]} =
-               run("for (var a = 3; a > 0; a = a - 1) { print a; }")
+               run("""
+               for (var a = 3; a > 0; a = a - 1) {
+                 print a;
+               }
+               """)
     end
   end
 
@@ -284,7 +295,7 @@ defmodule Ilox.InterpreterTest do
 
     test "print clock();" do
       assert {:ok, output: [output]} = run("print clock();")
-      assert output =~ ~r/^-?\d+$/
+      assert output =~ ~r/^-?\d+(?:e\d+)?$/
     end
 
     test "fun add(a, b, c) { print a + b + c; } add(1, 2, 3);" do
@@ -316,7 +327,7 @@ defmodule Ilox.InterpreterTest do
 
   describe "run/2: fibonacci" do
     @tag timeout: 3000
-    test "fibonacci" do
+    test "once" do
       src = """
       fun fib(n) {
         if (n < 2) return n;
@@ -331,7 +342,7 @@ defmodule Ilox.InterpreterTest do
     end
 
     @tag timeout: 3000
-    test "fibonacci loop" do
+    test "first twenty" do
       src = """
       fun fib(n) {
         if (n <= 1) return n;
@@ -370,7 +381,28 @@ defmodule Ilox.InterpreterTest do
   end
 
   describe "run/2: closure" do
-    @tag :focus
+    test "counter" do
+      src = """
+      fun makeCounter() {
+        var i = 0;
+
+        fun count() {
+          i = i + 1;
+          print i;
+        }
+
+        return count;
+      }
+
+      var counter1 = makeCounter();
+
+      counter1();
+      counter1();
+      """
+
+      assert {:ok, output: ["1", "2"]} = run(src)
+    end
+
     test "counters" do
       src = """
       fun makeCounter() {
@@ -395,34 +427,23 @@ defmodule Ilox.InterpreterTest do
 
       assert {:ok, output: ["1", "1", "2", "2"]} = run(src)
     end
-  end
 
-  defp run(source, replacements \\ []) do
-    case Interpreter.run(Env.new(print: &print/1), __replace(source, replacements)) do
-      :ok ->
-        {:ok, output: Enum.reverse(Process.get(:"$ilox$output", []))}
+    test "scope resolution" do
+      src = """
+      var a = "global";
 
-      {:error, type, errors} ->
-        {:error, type, errors, Enum.reverse(Process.get(:"$ilox$output", []))}
+      {
+        fun showA() {
+          print a;
+        }
+
+        showA();
+        var a = "block";
+        showA();
+      }
+      """
+
+      assert {:ok, output: ["global", "global"]} = run(src)
     end
-  after
-    Process.delete(:"$ilox$output")
   end
-
-  defp __replace(source, []), do: source
-
-  defp __replace(source, [{key, value} | rest]),
-    do: __replace(String.replace(source, inspect(key), value), rest)
-
-  defp print(message) do
-    queue = Process.get(:"$ilox$output", [])
-    queue = [message | queue]
-    Process.put(:"$ilox$output", queue)
-  end
-
-  # defp number_to_string(value) do
-  #   value
-  #   |> :erlang.float_to_binary([:short, :compact])
-  #   |> String.replace_suffix(".0", "")
-  # end
 end
