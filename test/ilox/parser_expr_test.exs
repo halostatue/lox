@@ -14,7 +14,7 @@ defmodule Ilox.ParserExprTest do
   describe "parse_expr/1: primary literal expressions" do
     for {left, left_literal} <- @atomics do
       test "#{inspect(left)} -> {:literal, #{inspect(left_literal)}}" do
-        assert {:ok, {:literal_expr, unquote(left_literal)}} =
+        assert {:ok, {:literal, unquote(left_literal)}} =
                  Parser.parse_expr(unquote(left))
       end
 
@@ -31,11 +31,11 @@ defmodule Ilox.ParserExprTest do
             {"/", :slash},
             {"*", :star}
           ] do
-        test "#{left} #{operator} #{right} -> {:binary_expr, {:literal, #{inspect(left_literal)}}, #{token}, {:literal, #{inspect(right_literal)}}}" do
+        test "#{left} #{operator} #{right} -> {:binary, {:literal, #{inspect(left_literal)}}, #{token}, {:literal, #{inspect(right_literal)}}}" do
           assert {:ok,
-                  {:binary_expr, {:literal_expr, unquote(left_literal)},
+                  {:binary, {:literal, unquote(left_literal)},
                    %Token{type: unquote(token)},
-                   {:literal_expr, unquote(right_literal)}}} =
+                   {:literal, unquote(right_literal)}}} =
                    Parser.parse_expr("#{unquote(left)} #{unquote(operator)} #{unquote(right)}")
         end
       end
@@ -43,7 +43,7 @@ defmodule Ilox.ParserExprTest do
 
     property "string -> {:literal, :string}" do
       check all(string <- string(:printable)) do
-        assert {:ok, {:literal_expr, %Token{type: :string, literal: ^string}}} =
+        assert {:ok, {:literal, %Token{type: :string, literal: ^string}}} =
                  Parser.parse_expr(inspect(string))
       end
     end
@@ -52,14 +52,14 @@ defmodule Ilox.ParserExprTest do
       check all(int <- non_negative_integer()) do
         literal = int / 1
 
-        assert {:ok, {:literal_expr, %Token{type: :number, literal: ^literal}}} =
+        assert {:ok, {:literal, %Token{type: :number, literal: ^literal}}} =
                  Parser.parse_expr(to_string(int))
       end
     end
 
     property "non-negative float -> {:literal, :number}" do
       check all(float <- float(min: 0.0)) do
-        assert {:ok, {:literal_expr, %Token{type: :number, literal: ^float}}} =
+        assert {:ok, {:literal, %Token{type: :number, literal: ^float}}} =
                  Parser.parse_expr(to_string(float))
       end
     end
@@ -71,8 +71,8 @@ defmodule Ilox.ParserExprTest do
         literal = int / 1
 
         assert {:ok,
-                {:unary_expr, %Token{type: :minus},
-                 {:literal_expr, %Token{type: :number, literal: ^literal}}}} =
+                {:unary, %Token{type: :minus},
+                 {:literal, %Token{type: :number, literal: ^literal}}}} =
                  Parser.parse_expr("-#{int}")
       end
     end
@@ -82,8 +82,8 @@ defmodule Ilox.ParserExprTest do
         literal = abs(float)
 
         assert {:ok,
-                {:unary_expr, %Token{type: :minus},
-                 {:literal_expr, %Token{type: :number, literal: ^literal}}}} =
+                {:unary, %Token{type: :minus},
+                 {:literal, %Token{type: :number, literal: ^literal}}}} =
                  Parser.parse_expr(to_string(float))
       end
     end
@@ -94,7 +94,7 @@ defmodule Ilox.ParserExprTest do
           {"nil", nil}
         ] do
       test "-#{inspect(input)} -> {:unary, :minus, {:literal, #{literal}}}" do
-        assert {:ok, {:unary_expr, %Token{type: :minus}, {:literal_expr, unquote(literal)}}} =
+        assert {:ok, {:unary, %Token{type: :minus}, {:literal, unquote(literal)}}} =
                  Parser.parse_expr("-#{unquote(input)}")
       end
     end
@@ -103,9 +103,9 @@ defmodule Ilox.ParserExprTest do
       check all(string <- string(:printable)) do
         assert {:ok,
                 {
-                  :unary_expr,
+                  :unary,
                   %Token{type: :minus},
-                  {:literal_expr, %Token{type: :string, literal: ^string}}
+                  {:literal, %Token{type: :string, literal: ^string}}
                 }} =
                  Parser.parse_expr("-\"#{string}\"")
       end
@@ -118,9 +118,9 @@ defmodule Ilox.ParserExprTest do
         literal = int / 1
 
         assert {:ok,
-                {:unary_expr, %Token{type: :bang},
-                 {:unary_expr, %Token{type: :minus},
-                  {:literal_expr, %Token{type: :number, literal: ^literal}}}}} =
+                {:unary, %Token{type: :bang},
+                 {:unary, %Token{type: :minus},
+                  {:literal, %Token{type: :number, literal: ^literal}}}}} =
                  Parser.parse_expr("!-#{int}")
       end
     end
@@ -130,9 +130,9 @@ defmodule Ilox.ParserExprTest do
         literal = abs(float)
 
         assert {:ok,
-                {:unary_expr, %Token{type: :bang},
-                 {:unary_expr, %Token{type: :minus},
-                  {:literal_expr, %Token{type: :number, literal: ^literal}}}}} =
+                {:unary, %Token{type: :bang},
+                 {:unary, %Token{type: :minus},
+                  {:literal, %Token{type: :number, literal: ^literal}}}}} =
                  Parser.parse_expr("!#{float}")
       end
     end
@@ -143,7 +143,7 @@ defmodule Ilox.ParserExprTest do
           {"nil", nil}
         ] do
       test "!#{inspect(input)} -> {:unary, :bang, {:literal, #{inspect(literal)}}}" do
-        assert {:ok, {:unary_expr, %Token{type: :bang}, {:literal_expr, unquote(literal)}}} =
+        assert {:ok, {:unary, %Token{type: :bang}, {:literal, unquote(literal)}}} =
                  Parser.parse_expr("!#{unquote(input)}")
       end
     end
@@ -152,9 +152,9 @@ defmodule Ilox.ParserExprTest do
       check all(string <- string(:printable)) do
         assert {:ok,
                 {
-                  :unary_expr,
+                  :unary,
                   %Token{type: :bang},
-                  {:literal_expr, %Token{type: :string, literal: ^string}}
+                  {:literal, %Token{type: :string, literal: ^string}}
                 }} =
                  Parser.parse_expr("!\"#{string}\"")
       end
@@ -165,8 +165,8 @@ defmodule Ilox.ParserExprTest do
         literal = int / 1
 
         assert {:ok,
-                {:unary_expr, %Token{type: :bang},
-                 {:literal_expr, %Token{type: :number, literal: ^literal}}}} =
+                {:unary, %Token{type: :bang},
+                 {:literal, %Token{type: :number, literal: ^literal}}}} =
                  Parser.parse_expr("!#{int}")
       end
     end
@@ -174,8 +174,8 @@ defmodule Ilox.ParserExprTest do
     property "non-negative float -> {:literal, :number}" do
       check all(float <- float(min: 0.0)) do
         assert {:ok,
-                {:unary_expr, %Token{type: :bang},
-                 {:literal_expr, %Token{type: :number, literal: ^float}}}} =
+                {:unary, %Token{type: :bang},
+                 {:literal, %Token{type: :number, literal: ^float}}}} =
                  Parser.parse_expr("!#{float}")
       end
     end
@@ -188,14 +188,14 @@ defmodule Ilox.ParserExprTest do
           {"nil", nil}
         ] do
       test "#{inspect(input)} -> {:group, {:literal, #{inspect(literal)}}}" do
-        assert {:ok, {:group_expr, {:literal_expr, unquote(literal)}}} =
+        assert {:ok, {:group, {:literal, unquote(literal)}}} =
                  Parser.parse_expr("(" <> inspect(unquote(literal)) <> ")")
       end
     end
 
     property "string -> {:literal, :string}" do
       check all(string <- string(:printable)) do
-        assert {:ok, {:group_expr, {:literal_expr, %Token{type: :string, literal: ^string}}}} =
+        assert {:ok, {:group, {:literal, %Token{type: :string, literal: ^string}}}} =
                  Parser.parse_expr("(\"#{string}\")")
       end
     end
@@ -204,14 +204,14 @@ defmodule Ilox.ParserExprTest do
       check all(int <- non_negative_integer()) do
         literal = int / 1
 
-        assert {:ok, {:group_expr, {:literal_expr, %Token{type: :number, literal: ^literal}}}} =
+        assert {:ok, {:group, {:literal, %Token{type: :number, literal: ^literal}}}} =
                  Parser.parse_expr("(#{int})")
       end
     end
 
     property "non-negative float -> {:literal, :number}" do
       check all(float <- float(min: 0.0)) do
-        assert {:ok, {:group_expr, {:literal_expr, %Token{type: :number, literal: ^float}}}} =
+        assert {:ok, {:group, {:literal, %Token{type: :number, literal: ^float}}}} =
                  Parser.parse_expr("(#{float})")
       end
     end
@@ -230,18 +230,18 @@ defmodule Ilox.ParserExprTest do
           {"/", :slash},
           {"*", :star}
         ] do
-      test "left #{operator} right -> {:binary_expr, left, #{token}, right}" do
+      test "left #{operator} right -> {:binary, left, #{token}, right}" do
         assert {:ok,
-                {:binary_expr, {:var_expr, %Token{type: :identifier, lexeme: "left"}},
+                {:binary, {:variable, %Token{type: :identifier, lexeme: "left"}},
                  %Token{type: unquote(token)},
-                 {:var_expr, %Token{type: :identifier, lexeme: "right"}}}} =
+                 {:variable, %Token{type: :identifier, lexeme: "right"}}}} =
                  Parser.parse_expr("left #{unquote(operator)} right")
       end
 
-      test "nil #{operator} number -> {:binary_expr, {:literal, nil}, #{token}, {:literal, number}}" do
+      test "nil #{operator} number -> {:binary, {:literal, nil}, #{token}, {:literal, number}}" do
         assert {:ok,
-                {:binary_expr, {:literal_expr, nil}, %Token{type: unquote(token)},
-                 {:literal_expr, %Token{type: :number, literal: 5.0}}}} =
+                {:binary, {:literal, nil}, %Token{type: unquote(token)},
+                 {:literal, %Token{type: :number, literal: 5.0}}}} =
                  Parser.parse_expr("nil #{unquote(operator)} 5")
       end
     end
@@ -249,27 +249,27 @@ defmodule Ilox.ParserExprTest do
 
   describe "parse_expr/1: logical expressions" do
     test "left or right" do
-      assert {:ok, {:logical_expr, {:var_expr, _}, %Token{type: :or}, {:var_expr, _}}} =
+      assert {:ok, {:logical, {:variable, _}, %Token{type: :or}, {:variable, _}}} =
                Parser.parse_expr("left or right")
     end
 
     test "left and right" do
-      assert {:ok, {:logical_expr, {:var_expr, _}, %Token{type: :and}, {:var_expr, _}}} =
+      assert {:ok, {:logical, {:variable, _}, %Token{type: :and}, {:variable, _}}} =
                Parser.parse_expr("left and right")
     end
   end
 
   describe "parse_expr/1: function calls" do
     test "fn()" do
-      assert {:ok, {:call, {:var_expr, %Token{lexeme: "fn"}}, [], 0, %Token{type: :right_paren}}} =
+      assert {:ok, {:fcall, {:variable, %Token{lexeme: "fn"}}, [], 0, %Token{type: :right_paren}}} =
                Parser.parse_expr("fn()")
     end
 
     test "fn()()()" do
       assert {:ok,
-              {:call,
-               {:call,
-                {:call, {:var_expr, %Token{lexeme: "fn"}}, [], 0, %Token{type: :right_paren}}, [],
+              {:fcall,
+               {:fcall,
+                {:fcall, {:variable, %Token{lexeme: "fn"}}, [], 0, %Token{type: :right_paren}}, [],
                 0, %Token{type: :right_paren}}, [], 0,
                %Token{type: :right_paren}}} =
                Parser.parse_expr("fn()()()")
@@ -280,9 +280,9 @@ defmodule Ilox.ParserExprTest do
       # This should not be passing because there's an extra closing parenthesis that
       # should halt parsing.
       assert {:ok,
-              {:call,
-               {:call,
-                {:call, {:var_expr, %Token{lexeme: "fn"}}, [], 0, %Token{type: :right_paren}}, [],
+              {:fcall,
+               {:fcall,
+                {:fcall, {:variable, %Token{lexeme: "fn"}}, [], 0, %Token{type: :right_paren}}, [],
                 %Token{type: :right_paren}}, [],
                %Token{type: :right_paren}}} =
                Parser.parse_expr("fn()())()")
@@ -290,7 +290,7 @@ defmodule Ilox.ParserExprTest do
 
     test "fn(1)" do
       assert {:ok,
-              {:call, {:var_expr, %Token{lexeme: "fn"}}, [{:literal_expr, %Token{literal: 1.0}}],
+              {:fcall, {:variable, %Token{lexeme: "fn"}}, [{:literal, %Token{literal: 1.0}}],
                1,
                %Token{type: :right_paren}}} =
                Parser.parse_expr("fn(1)")
@@ -298,11 +298,11 @@ defmodule Ilox.ParserExprTest do
 
     test "fn(1, 2, 3)" do
       assert {:ok,
-              {:call, {:var_expr, %Token{lexeme: "fn"}},
+              {:fcall, {:variable, %Token{lexeme: "fn"}},
                [
-                 {:literal_expr, %Token{literal: 1.0}},
-                 {:literal_expr, %Token{literal: 2.0}},
-                 {:literal_expr, %Token{literal: 3.0}}
+                 {:literal, %Token{literal: 1.0}},
+                 {:literal, %Token{literal: 2.0}},
+                 {:literal, %Token{literal: 3.0}}
                ], 3,
                %Token{type: :right_paren}}} =
                Parser.parse_expr("fn(1, 2, 3)")
@@ -320,7 +320,7 @@ defmodule Ilox.ParserExprTest do
       # parser is likely to have some issues. For now, we are leaving it as a successful
       # parse.
       assert {:ok,
-              {:call, {:var_expr, %Token{lexeme: "fn"}}, [{:literal_expr, %Token{literal: 1.0}}],
+              {:fcall, {:variable, %Token{lexeme: "fn"}}, [{:literal, %Token{literal: 1.0}}],
                1,
                %Token{type: :right_paren}}} =
                Parser.parse_expr("fn(1,)")

@@ -14,7 +14,7 @@ defmodule Ilox.ParserStmtTest do
           {"nil", nil}
         ] do
       test "#{inspect(input)};" do
-        assert {:ok, [{:expr_stmt, {:literal_expr, unquote(literal)}}]} =
+        assert {:ok, [{:expr_stmt, {:literal, unquote(literal)}}]} =
                  Parser.parse(unquote(input) <> ";")
       end
 
@@ -22,7 +22,7 @@ defmodule Ilox.ParserStmtTest do
         assert {:ok,
                 [
                   {:expr_stmt,
-                   {:unary_expr, %Token{type: :minus}, {:literal_expr, unquote(literal)}}}
+                   {:unary, %Token{type: :minus}, {:literal, unquote(literal)}}}
                 ]} =
                  Parser.parse("-#{unquote(input)};")
       end
@@ -30,7 +30,7 @@ defmodule Ilox.ParserStmtTest do
 
     property "string;" do
       check all(string <- literal(:string)) do
-        assert {:ok, [{:expr_stmt, {:literal_expr, %Token{type: :string, literal: ^string}}}]} =
+        assert {:ok, [{:expr_stmt, {:literal, %Token{type: :string, literal: ^string}}}]} =
                  Parser.parse(inspect(string) <> ";")
       end
     end
@@ -40,8 +40,8 @@ defmodule Ilox.ParserStmtTest do
         assert {:ok,
                 [
                   {:expr_stmt,
-                   {:unary_expr, %Token{type: :minus},
-                    {:literal_expr, %Token{type: :string, literal: ^string}}}}
+                   {:unary, %Token{type: :minus},
+                    {:literal, %Token{type: :string, literal: ^string}}}}
                 ]} =
                  Parser.parse("-\"#{string}\";")
       end
@@ -51,14 +51,14 @@ defmodule Ilox.ParserStmtTest do
       check all(int <- non_negative_integer()) do
         literal = int / 1
 
-        assert {:ok, [{:expr_stmt, {:literal_expr, %Token{type: :number, literal: ^literal}}}]} =
+        assert {:ok, [{:expr_stmt, {:literal, %Token{type: :number, literal: ^literal}}}]} =
                  Parser.parse(to_string(int) <> ";")
       end
     end
 
     property "non-negative float;" do
       check all(float <- float(min: 0.0)) do
-        assert {:ok, [{:expr_stmt, {:literal_expr, %Token{type: :number, literal: ^float}}}]} =
+        assert {:ok, [{:expr_stmt, {:literal, %Token{type: :number, literal: ^float}}}]} =
                  Parser.parse(to_string(float) <> ";")
       end
     end
@@ -70,8 +70,8 @@ defmodule Ilox.ParserStmtTest do
         assert {:ok,
                 [
                   {:expr_stmt,
-                   {:unary_expr, %Token{type: :minus},
-                    {:literal_expr, %Token{type: :number, literal: ^literal}}}}
+                   {:unary, %Token{type: :minus},
+                    {:literal, %Token{type: :number, literal: ^literal}}}}
                 ]} =
                  Parser.parse("-#{int};")
       end
@@ -84,8 +84,8 @@ defmodule Ilox.ParserStmtTest do
         assert {:ok,
                 [
                   {:expr_stmt,
-                   {:unary_expr, %Token{type: :minus},
-                    {:literal_expr, %Token{type: :number, literal: ^literal}}}}
+                   {:unary, %Token{type: :minus},
+                    {:literal, %Token{type: :number, literal: ^literal}}}}
                 ]} =
                  Parser.parse(to_string(float) <> ";")
       end
@@ -100,9 +100,9 @@ defmodule Ilox.ParserStmtTest do
         assert {:ok,
                 [
                   {:expr_stmt,
-                   {:unary_expr, %Token{type: :bang},
-                    {:unary_expr, %Token{type: :minus},
-                     {:literal_expr, %Token{type: :number, literal: ^literal}}}}}
+                   {:unary, %Token{type: :bang},
+                    {:unary, %Token{type: :minus},
+                     {:literal, %Token{type: :number, literal: ^literal}}}}}
                 ]} =
                  Parser.parse("!-#{int};")
       end
@@ -115,9 +115,9 @@ defmodule Ilox.ParserStmtTest do
         assert {:ok,
                 [
                   {:expr_stmt,
-                   {:unary_expr, %Token{type: :bang},
-                    {:unary_expr, %Token{type: :minus},
-                     {:literal_expr, %Token{type: :number, literal: ^literal}}}}}
+                   {:unary, %Token{type: :bang},
+                    {:unary, %Token{type: :minus},
+                     {:literal, %Token{type: :number, literal: ^literal}}}}}
                 ]} =
                  Parser.parse("!#{float};")
       end
@@ -132,7 +132,7 @@ defmodule Ilox.ParserStmtTest do
         assert {:ok,
                 [
                   {:expr_stmt,
-                   {:unary_expr, %Token{type: :bang}, {:literal_expr, unquote(literal)}}}
+                   {:unary, %Token{type: :bang}, {:literal, unquote(literal)}}}
                 ]} =
                  Parser.parse("!#{unquote(input)};")
       end
@@ -143,8 +143,8 @@ defmodule Ilox.ParserStmtTest do
         assert {:ok,
                 [
                   {:expr_stmt,
-                   {:unary_expr, %Token{type: :bang},
-                    {:literal_expr, %Token{type: :string, literal: ^string}}}}
+                   {:unary, %Token{type: :bang},
+                    {:literal, %Token{type: :string, literal: ^string}}}}
                 ]} =
                  Parser.parse("!\"#{string}\";")
       end
@@ -157,8 +157,8 @@ defmodule Ilox.ParserStmtTest do
         assert {:ok,
                 [
                   {:expr_stmt,
-                   {:unary_expr, %Token{type: :bang},
-                    {:literal_expr, %Token{type: :number, literal: ^literal}}}}
+                   {:unary, %Token{type: :bang},
+                    {:literal, %Token{type: :number, literal: ^literal}}}}
                 ]} =
                  Parser.parse("!#{int};")
       end
@@ -169,8 +169,8 @@ defmodule Ilox.ParserStmtTest do
         assert {:ok,
                 [
                   {:expr_stmt,
-                   {:unary_expr, %Token{type: :bang},
-                    {:literal_expr, %Token{type: :number, literal: ^float}}}}
+                   {:unary, %Token{type: :bang},
+                    {:literal, %Token{type: :number, literal: ^float}}}}
                 ]} =
                  Parser.parse("!#{float};")
       end
@@ -184,7 +184,7 @@ defmodule Ilox.ParserStmtTest do
           {"nil", nil}
         ] do
       test "(#{inspect(input)});" do
-        assert {:ok, [{:expr_stmt, {:group_expr, {:literal_expr, unquote(literal)}}}]} =
+        assert {:ok, [{:expr_stmt, {:group, {:literal, unquote(literal)}}}]} =
                  Parser.parse("(" <> inspect(unquote(literal)) <> ");")
       end
     end
@@ -194,7 +194,7 @@ defmodule Ilox.ParserStmtTest do
         assert {:ok,
                 [
                   {:expr_stmt,
-                   {:group_expr, {:literal_expr, %Token{type: :string, literal: ^string}}}}
+                   {:group, {:literal, %Token{type: :string, literal: ^string}}}}
                 ]} =
                  Parser.parse("(\"#{string}\");")
       end
@@ -207,7 +207,7 @@ defmodule Ilox.ParserStmtTest do
         assert {:ok,
                 [
                   {:expr_stmt,
-                   {:group_expr, {:literal_expr, %Token{type: :number, literal: ^literal}}}}
+                   {:group, {:literal, %Token{type: :number, literal: ^literal}}}}
                 ]} =
                  Parser.parse("(#{int});")
       end
@@ -218,7 +218,7 @@ defmodule Ilox.ParserStmtTest do
         assert {:ok,
                 [
                   {:expr_stmt,
-                   {:group_expr, {:literal_expr, %Token{type: :number, literal: ^float}}}}
+                   {:group, {:literal, %Token{type: :number, literal: ^float}}}}
                 ]} =
                  Parser.parse("(#{float});")
       end
@@ -242,9 +242,9 @@ defmodule Ilox.ParserStmtTest do
         assert {:ok,
                 [
                   {:expr_stmt,
-                   {:binary_expr, {:var_expr, %Token{type: :identifier, lexeme: "left"}},
+                   {:binary, {:variable, %Token{type: :identifier, lexeme: "left"}},
                     %Token{type: unquote(token)},
-                    {:var_expr, %Token{type: :identifier, lexeme: "right"}}}}
+                    {:variable, %Token{type: :identifier, lexeme: "right"}}}}
                 ]} =
                  Parser.parse("left #{unquote(operator)} right;")
       end
@@ -253,8 +253,8 @@ defmodule Ilox.ParserStmtTest do
         assert {:ok,
                 [
                   {:expr_stmt,
-                   {:binary_expr, {:literal_expr, nil}, %Token{type: unquote(token)},
-                    {:literal_expr, %Token{type: :number, literal: 5.0}}}}
+                   {:binary, {:literal, nil}, %Token{type: unquote(token)},
+                    {:literal, %Token{type: :number, literal: 5.0}}}}
                 ]} =
                  Parser.parse("nil #{unquote(operator)} 5;")
       end
@@ -266,8 +266,8 @@ defmodule Ilox.ParserStmtTest do
       assert {:ok,
               [
                 {:expr_stmt,
-                 {:assign_expr, %Token{type: :identifier, lexeme: "left"},
-                  {:var_expr, %Token{type: :identifier, lexeme: "right"}}}}
+                 {:assignment, %Token{type: :identifier, lexeme: "left"},
+                  {:variable, %Token{type: :identifier, lexeme: "right"}}}}
               ]} = Parser.parse("left = right;")
     end
 
@@ -281,13 +281,13 @@ defmodule Ilox.ParserStmtTest do
     test "one block" do
       assert {:ok,
               [
-                {:print_stmt, {:literal_expr, %Token{type: :number, literal: 1.0}}},
+                {:print_stmt, {:literal, %Token{type: :number, literal: 1.0}}},
                 {:block,
                  [
-                   {:print_stmt, {:literal_expr, %Token{type: :number, literal: 2.0}}},
-                   {:print_stmt, {:literal_expr, %Token{type: :number, literal: 3.0}}}
+                   {:print_stmt, {:literal, %Token{type: :number, literal: 2.0}}},
+                   {:print_stmt, {:literal, %Token{type: :number, literal: 3.0}}}
                  ]},
-                {:print_stmt, {:literal_expr, %Token{type: :number, literal: 4.0}}}
+                {:print_stmt, {:literal, %Token{type: :number, literal: 4.0}}}
               ]} =
                Parser.parse("print 1; { print 2; print 3; } print 4;")
     end
@@ -295,10 +295,10 @@ defmodule Ilox.ParserStmtTest do
     test "two blocks" do
       assert {:ok,
               [
-                {:print_stmt, {:literal_expr, %Token{type: :number, literal: 1.0}}},
-                {:block, [{:print_stmt, {:literal_expr, %Token{type: :number, literal: 2.0}}}]},
-                {:block, [{:print_stmt, {:literal_expr, %Token{type: :number, literal: 3.0}}}]},
-                {:print_stmt, {:literal_expr, %Token{type: :number, literal: 4.0}}}
+                {:print_stmt, {:literal, %Token{type: :number, literal: 1.0}}},
+                {:block, [{:print_stmt, {:literal, %Token{type: :number, literal: 2.0}}}]},
+                {:block, [{:print_stmt, {:literal, %Token{type: :number, literal: 3.0}}}]},
+                {:print_stmt, {:literal, %Token{type: :number, literal: 4.0}}}
               ]} =
                Parser.parse("print 1; { print 2; } { print 3; } print 4;")
     end
@@ -308,13 +308,13 @@ defmodule Ilox.ParserStmtTest do
               [
                 {:block,
                  [
-                   {:print_stmt, {:literal_expr, %Token{type: :number, literal: 1.0}}},
+                   {:print_stmt, {:literal, %Token{type: :number, literal: 1.0}}},
                    {:block,
                     [
-                      {:print_stmt, {:literal_expr, %Token{type: :number, literal: 2.0}}},
-                      {:print_stmt, {:literal_expr, %Token{type: :number, literal: 3.0}}}
+                      {:print_stmt, {:literal, %Token{type: :number, literal: 2.0}}},
+                      {:print_stmt, {:literal, %Token{type: :number, literal: 3.0}}}
                     ]},
-                   {:print_stmt, {:literal_expr, %Token{type: :number, literal: 4.0}}}
+                   {:print_stmt, {:literal, %Token{type: :number, literal: 4.0}}}
                  ]}
               ]} =
                Parser.parse("{ print 1; { print 2; print 3; } print 4; }")
@@ -325,17 +325,17 @@ defmodule Ilox.ParserStmtTest do
               [
                 {:block,
                  [
-                   {:print_stmt, {:literal_expr, %Token{type: :number, literal: 1.0}}},
+                   {:print_stmt, {:literal, %Token{type: :number, literal: 1.0}}},
                    {:block,
                     [
-                      {:print_stmt, {:literal_expr, %Token{type: :number, literal: 2.0}}},
+                      {:print_stmt, {:literal, %Token{type: :number, literal: 2.0}}},
                       {:block,
                        [
-                         {:print_stmt, {:literal_expr, %Token{type: :number, literal: 3.0}}}
+                         {:print_stmt, {:literal, %Token{type: :number, literal: 3.0}}}
                        ]},
-                      {:print_stmt, {:literal_expr, %Token{type: :number, literal: 4.0}}}
+                      {:print_stmt, {:literal, %Token{type: :number, literal: 4.0}}}
                     ]},
-                   {:print_stmt, {:literal_expr, %Token{type: :number, literal: 5.0}}}
+                   {:print_stmt, {:literal, %Token{type: :number, literal: 5.0}}}
                  ]}
               ]} =
                Parser.parse("{ print 1; { print 2; { print 3; } print 4; } print 5; }")
@@ -344,27 +344,27 @@ defmodule Ilox.ParserStmtTest do
     test "scope" do
       assert {:ok,
               [
-                {:var_decl, %Token{lexeme: "a"}, {:literal_expr, %Token{type: :string}}},
-                {:var_decl, %Token{lexeme: "b"}, {:literal_expr, %Token{type: :string}}},
-                {:var_decl, %Token{lexeme: "c"}, {:literal_expr, %Token{type: :string}}},
+                {:var_decl, %Token{lexeme: "a"}, {:literal, %Token{type: :string}}},
+                {:var_decl, %Token{lexeme: "b"}, {:literal, %Token{type: :string}}},
+                {:var_decl, %Token{lexeme: "c"}, {:literal, %Token{type: :string}}},
                 {:block,
                  [
-                   {:var_decl, %Token{lexeme: "a"}, {:literal_expr, %Token{type: :string}}},
-                   {:var_decl, %Token{lexeme: "b"}, {:literal_expr, %Token{type: :string}}},
+                   {:var_decl, %Token{lexeme: "a"}, {:literal, %Token{type: :string}}},
+                   {:var_decl, %Token{lexeme: "b"}, {:literal, %Token{type: :string}}},
                    {:block,
                     [
-                      {:var_decl, %Token{lexeme: "a"}, {:literal_expr, %Token{type: :string}}},
-                      {:print_stmt, {:var_expr, %Token{lexeme: "a"}}},
-                      {:print_stmt, {:var_expr, %Token{lexeme: "b"}}},
-                      {:print_stmt, {:var_expr, %Token{lexeme: "c"}}}
+                      {:var_decl, %Token{lexeme: "a"}, {:literal, %Token{type: :string}}},
+                      {:print_stmt, {:variable, %Token{lexeme: "a"}}},
+                      {:print_stmt, {:variable, %Token{lexeme: "b"}}},
+                      {:print_stmt, {:variable, %Token{lexeme: "c"}}}
                     ]},
-                   {:print_stmt, {:var_expr, %Token{lexeme: "a"}}},
-                   {:print_stmt, {:var_expr, %Token{lexeme: "b"}}},
-                   {:print_stmt, {:var_expr, %Token{lexeme: "c"}}}
+                   {:print_stmt, {:variable, %Token{lexeme: "a"}}},
+                   {:print_stmt, {:variable, %Token{lexeme: "b"}}},
+                   {:print_stmt, {:variable, %Token{lexeme: "c"}}}
                  ]},
-                {:print_stmt, {:var_expr, %Token{lexeme: "a"}}},
-                {:print_stmt, {:var_expr, %Token{lexeme: "b"}}},
-                {:print_stmt, {:var_expr, %Token{lexeme: "c"}}}
+                {:print_stmt, {:variable, %Token{lexeme: "a"}}},
+                {:print_stmt, {:variable, %Token{lexeme: "b"}}},
+                {:print_stmt, {:variable, %Token{lexeme: "c"}}}
               ]} =
                Parser.parse("""
                var a = "global a";
@@ -394,8 +394,8 @@ defmodule Ilox.ParserStmtTest do
     test "if" do
       assert {:ok,
               [
-                {:if_stmt, {:literal_expr, %Token{type: :number}},
-                 {:print_stmt, {:literal_expr, %Token{type: :number}}}, nil}
+                {:if_stmt, {:literal, %Token{type: :number}},
+                 {:print_stmt, {:literal, %Token{type: :number}}}, nil}
               ]} =
                Parser.parse("""
                if (1)
@@ -406,8 +406,8 @@ defmodule Ilox.ParserStmtTest do
     test "if block" do
       assert {:ok,
               [
-                {:if_stmt, {:literal_expr, %Token{type: :number}},
-                 {:block, [{:print_stmt, {:literal_expr, %Token{type: :number}}}]}, nil}
+                {:if_stmt, {:literal, %Token{type: :number}},
+                 {:block, [{:print_stmt, {:literal, %Token{type: :number}}}]}, nil}
               ]} =
                Parser.parse("""
                if (1) {
@@ -419,9 +419,9 @@ defmodule Ilox.ParserStmtTest do
     test "if/else" do
       assert {:ok,
               [
-                {:if_stmt, {:literal_expr, %Token{type: :number}},
-                 {:print_stmt, {:literal_expr, %Token{type: :number}}},
-                 {:print_stmt, {:literal_expr, %Token{type: :number}}}}
+                {:if_stmt, {:literal, %Token{type: :number}},
+                 {:print_stmt, {:literal, %Token{type: :number}}},
+                 {:print_stmt, {:literal, %Token{type: :number}}}}
               ]} =
                Parser.parse("""
                if (1)
@@ -434,9 +434,9 @@ defmodule Ilox.ParserStmtTest do
     test "if/else (block)" do
       assert {:ok,
               [
-                {:if_stmt, {:literal_expr, %Token{type: :number}},
-                 {:block, [{:print_stmt, {:literal_expr, %Token{type: :number}}}]},
-                 {:block, [{:print_stmt, {:literal_expr, %Token{type: :number}}}]}}
+                {:if_stmt, {:literal, %Token{type: :number}},
+                 {:block, [{:print_stmt, {:literal, %Token{type: :number}}}]},
+                 {:block, [{:print_stmt, {:literal, %Token{type: :number}}}]}}
               ]} =
                Parser.parse("""
                if (1) {
@@ -451,10 +451,10 @@ defmodule Ilox.ParserStmtTest do
       # This is pathological. Do not do this.
       assert {:ok,
               [
-                {:if_stmt, {:literal_expr, %Token{type: :number}},
-                 {:if_stmt, {:literal_expr, %Token{type: :number}},
-                  {:print_stmt, {:literal_expr, %Token{type: :number}}},
-                  {:print_stmt, {:literal_expr, %Token{type: :number}}}}, nil}
+                {:if_stmt, {:literal, %Token{type: :number}},
+                 {:if_stmt, {:literal, %Token{type: :number}},
+                  {:print_stmt, {:literal, %Token{type: :number}}},
+                  {:print_stmt, {:literal, %Token{type: :number}}}}, nil}
               ]} =
                Parser.parse("""
                if (1) if (2) print 2; else print 3;
@@ -464,12 +464,12 @@ defmodule Ilox.ParserStmtTest do
     test "if if/else block" do
       assert {:ok,
               [
-                {:if_stmt, {:literal_expr, %Token{type: :number}},
+                {:if_stmt, {:literal, %Token{type: :number}},
                  {:block,
                   [
-                    {:if_stmt, {:literal_expr, %Token{type: :number}},
-                     {:block, [{:print_stmt, {:literal_expr, %Token{type: :number}}}]},
-                     {:block, [{:print_stmt, {:literal_expr, %Token{type: :number}}}]}}
+                    {:if_stmt, {:literal, %Token{type: :number}},
+                     {:block, [{:print_stmt, {:literal, %Token{type: :number}}}]},
+                     {:block, [{:print_stmt, {:literal, %Token{type: :number}}}]}}
                   ]}, nil}
               ]} =
                Parser.parse("""
@@ -487,11 +487,11 @@ defmodule Ilox.ParserStmtTest do
       # This is pathological. Do not do this.
       assert {:ok,
               [
-                {:if_stmt, {:literal_expr, %Token{type: :number}},
-                 {:if_stmt, {:literal_expr, %Token{type: :number}},
-                  {:print_stmt, {:literal_expr, %Token{type: :number}}},
-                  {:print_stmt, {:literal_expr, %Token{type: :number}}}},
-                 {:print_stmt, {:literal_expr, %Token{type: :number}}}}
+                {:if_stmt, {:literal, %Token{type: :number}},
+                 {:if_stmt, {:literal, %Token{type: :number}},
+                  {:print_stmt, {:literal, %Token{type: :number}}},
+                  {:print_stmt, {:literal, %Token{type: :number}}}},
+                 {:print_stmt, {:literal, %Token{type: :number}}}}
               ]} =
                Parser.parse("""
                if (1)
@@ -507,13 +507,13 @@ defmodule Ilox.ParserStmtTest do
     test "if if/else else block" do
       assert {:ok,
               [
-                {:if_stmt, {:literal_expr, %Token{type: :number}},
+                {:if_stmt, {:literal, %Token{type: :number}},
                  {:block,
                   [
-                    {:if_stmt, {:literal_expr, %Token{type: :number}},
-                     {:block, [{:print_stmt, {:literal_expr, %Token{type: :number}}}]},
-                     {:block, [{:print_stmt, {:literal_expr, %Token{type: :number}}}]}}
-                  ]}, {:block, [{:print_stmt, {:literal_expr, %Token{type: :number}}}]}}
+                    {:if_stmt, {:literal, %Token{type: :number}},
+                     {:block, [{:print_stmt, {:literal, %Token{type: :number}}}]},
+                     {:block, [{:print_stmt, {:literal, %Token{type: :number}}}]}}
+                  ]}, {:block, [{:print_stmt, {:literal, %Token{type: :number}}}]}}
               ]} =
                Parser.parse("""
                if (1) {
@@ -533,8 +533,8 @@ defmodule Ilox.ParserStmtTest do
     test "while" do
       assert {:ok,
               [
-                {:while_stmt, {:literal_expr, %Token{type: :number}},
-                 {:print_stmt, {:literal_expr, %Token{type: :number}}}}
+                {:while_stmt, {:literal, %Token{type: :number}},
+                 {:print_stmt, {:literal, %Token{type: :number}}}}
               ]} =
                Parser.parse("""
                while (1)
@@ -545,8 +545,8 @@ defmodule Ilox.ParserStmtTest do
     test "while block" do
       assert {:ok,
               [
-                {:while_stmt, {:literal_expr, %Token{type: :number}},
-                 {:block, [{:print_stmt, {:literal_expr, %Token{type: :number}}}]}}
+                {:while_stmt, {:literal, %Token{type: :number}},
+                 {:block, [{:print_stmt, {:literal, %Token{type: :number}}}]}}
               ]} =
                Parser.parse("""
                while (1) {
@@ -558,9 +558,9 @@ defmodule Ilox.ParserStmtTest do
     test "nested while" do
       assert {:ok,
               [
-                {:while_stmt, {:literal_expr, %Token{type: :number}},
-                 {:while_stmt, {:literal_expr, %Token{type: :number}},
-                  {:print_stmt, {:literal_expr, %Token{type: :number}}}}}
+                {:while_stmt, {:literal, %Token{type: :number}},
+                 {:while_stmt, {:literal, %Token{type: :number}},
+                  {:print_stmt, {:literal, %Token{type: :number}}}}}
               ]} =
                Parser.parse("""
                while (1)
@@ -572,11 +572,11 @@ defmodule Ilox.ParserStmtTest do
     test "nested while (block)" do
       assert {:ok,
               [
-                {:while_stmt, {:literal_expr, %Token{type: :number}},
+                {:while_stmt, {:literal, %Token{type: :number}},
                  {:block,
                   [
-                    {:while_stmt, {:literal_expr, %Token{type: :number}},
-                     {:block, [print_stmt: {:literal_expr, %Token{type: :number}}]}}
+                    {:while_stmt, {:literal, %Token{type: :number}},
+                     {:block, [print_stmt: {:literal, %Token{type: :number}}]}}
                   ]}}
               ]} =
                Parser.parse("""
@@ -591,7 +591,7 @@ defmodule Ilox.ParserStmtTest do
 
   describe "parse/1: for statement" do
     test "for (;;) print 3;" do
-      assert {:ok, [{:while_stmt, {:literal_expr, true}, {:print_stmt, {:literal_expr, _}}}]} =
+      assert {:ok, [{:while_stmt, {:literal, true}, {:print_stmt, {:literal, _}}}]} =
                Parser.parse("for (;;) print 3;")
     end
 
@@ -600,17 +600,17 @@ defmodule Ilox.ParserStmtTest do
               [
                 {:block,
                  [
-                   {:var_decl, %Token{lexeme: "a"}, {:literal_expr, %Token{lexeme: "1"}}},
+                   {:var_decl, %Token{lexeme: "a"}, {:literal, %Token{lexeme: "1"}}},
                    {:while_stmt,
-                    {:binary_expr, {:var_expr, %Token{lexeme: "a"}}, %Token{type: :greater},
-                     {:literal_expr, %Token{lexeme: "0"}}},
+                    {:binary, {:variable, %Token{lexeme: "a"}}, %Token{type: :greater},
+                     {:literal, %Token{lexeme: "0"}}},
                     {:block,
                      [
-                       {:print_stmt, {:var_expr, %Token{lexeme: "a"}}},
+                       {:print_stmt, {:variable, %Token{lexeme: "a"}}},
                        {:expr_stmt,
-                        {:assign_expr, %Token{lexeme: "a"},
-                         {:binary_expr, {:var_expr, %Token{lexeme: "a"}}, %Token{type: :minus},
-                          {:literal_expr, %Token{lexeme: "1"}}}}}
+                        {:assignment, %Token{lexeme: "a"},
+                         {:binary, {:variable, %Token{lexeme: "a"}}, %Token{type: :minus},
+                          {:literal, %Token{lexeme: "1"}}}}}
                      ]}}
                  ]}
               ]} = Parser.parse("for (var a = 1; a > 0; a = a - 1) print a;")
@@ -621,17 +621,17 @@ defmodule Ilox.ParserStmtTest do
               [
                 {:block,
                  [
-                   {:var_decl, %Token{lexeme: "a"}, {:literal_expr, %Token{lexeme: "1"}}},
+                   {:var_decl, %Token{lexeme: "a"}, {:literal, %Token{lexeme: "1"}}},
                    {:while_stmt,
-                    {:binary_expr, {:var_expr, %Token{lexeme: "a"}}, %Token{type: :greater},
-                     {:literal_expr, %Token{lexeme: "0"}}},
+                    {:binary, {:variable, %Token{lexeme: "a"}}, %Token{type: :greater},
+                     {:literal, %Token{lexeme: "0"}}},
                     {:block,
                      [
-                       {:print_stmt, {:var_expr, %Token{lexeme: "a"}}},
+                       {:print_stmt, {:variable, %Token{lexeme: "a"}}},
                        {:expr_stmt,
-                        {:assign_expr, %Token{lexeme: "a"},
-                         {:binary_expr, {:var_expr, %Token{lexeme: "a"}}, %Token{type: :minus},
-                          {:literal_expr, %Token{lexeme: "1"}}}}}
+                        {:assignment, %Token{lexeme: "a"},
+                         {:binary, {:variable, %Token{lexeme: "a"}}, %Token{type: :minus},
+                          {:literal, %Token{lexeme: "1"}}}}}
                      ]}}
                  ]}
               ]} = Parser.parse("for (var a = 1; a > 0; a = a - 1) { print a; }")

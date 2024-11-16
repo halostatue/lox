@@ -5,166 +5,14 @@ end
 
 defmodule Ilox.Parser do
   @moduledoc """
-  The parser adapts the `m:Ilox#context-free-grammar` into one that encodes its precedence
-  rules. The parser produces an AST that is a mix of the context free grammar for
-  expressions and the parsing grammar for statements.
-
-  #### Parsing Grammar
-
-  ```
-  expression  →  assignment ;
-  assignment  →  IDENTIFIER "=" assignment | logic_or ;
-  logic_or    →  logic_and ( "or" logic_and )* ;
-  logic_and   →  equality ( "and" equality )* ;
-  equality    →  comparison ( ( "!=" | "==" ) comparison )* ;
-  comparison  →  term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
-  term        →  factor ( ( "-" | "+" ) factor )* ;
-  factor      →  unary ( ( "/" | "*" ) unary )* ;
-  unary       →  ( ( "!" | "-" ) unary ) | call ;
-  call        →  primary  ( "(" arguments? ")" )* ;
-  variable    →  IDENTIFIER ;
-  primary     →  "true" | "false" | "nil"
-              |  NUMBER | STRING
-              |  "(" expression ")"
-              |  IDENTIFIER ;
-  arguments   →  expression ( "," expression )* ;
-  program     →  ( declaration )* ;
-  declaration →  fun_decl | var_decl | statement ;
-  statement   →  expr_stmt
-              | print_stmt
-              | block
-              | if_stmt
-              | return_stmt
-              | while_stmt ;
-  fun_decl    →  "fun" function ;
-  function    →  IDENTIFIER "(" parameters? ")" block ;
-  parameters  →  IDENTIFIER ( "," IDENTIFIER )* ;
-  var_decl    →  "var" IDENTIFIER ( "=" expression )? ";" ;
-  if_stmt     →  "if" "(" expression ")" statement
-                 ( "else" statement )? ;
-  block       →  "{" declaration* "}" ;
-  print_stmt  →  "print" expression ";" ;
-  while_stmt  →  "while" "(" expression ")" statement ;
-  for_stmt    →  "for" "(" ( var_decl | expr_stmt | ";" ) expression? ";" expression? ")"
-                 statement ;
-  return_stmt →  "return" expression? ";" ;
-  expr_stmt   →  expression ";" ;
-  ```
+  The parser for `t:Ilox.Token.t/0` lists into an abstract syntax tree.
   """
 
   alias Ilox.Errors
   alias Ilox.Scanner
   alias Ilox.Token
 
-  @typedoc section: :pgrammar
-  @typedoc """
-  A (possibly empty) list of `t:declaration/0`.
-  """
-  @type program :: list(declaration)
-
-  @typedoc section: :pgrammar
-  @typedoc """
-  A `t:fun_decl/0`, `t:var_decl/0`, or `t:statement/0`.
-  """
-  @type declaration :: var_decl | statement
-
-  @typedoc section: :pgrammar
-  @typedoc """
-  A variable declaration with an optional initializer.
-  """
-  @type fun_decl ::
-          {:function, name :: Token.t(), params :: list(Token.t()), arity :: non_neg_integer(),
-           body :: list(statement)}
-
-  @typedoc section: :pgrammar
-  @typedoc """
-  A variable declaration with an optional initializer.
-  """
-  @type var_decl :: {:var_decl, identifier :: Token.t(), initializer :: Ilox.expr() | nil}
-
-  @typedoc section: :pgrammar
-  @typedoc """
-  Supported program statements. All statement types, except blocks, require a terminal
-  semicolon (`;`) to be valid.
-  """
-  @type statement :: expr_stmt | print_stmt | block | if_stmt | while_stmt | return_stmt
-
-  @typedoc section: :pgrammar
-  @typedoc """
-  An expression statement. The expression is evaluated, but is essentially side-effect
-  free.
-  """
-  @type expr_stmt :: {:expr_stmt, expr :: Ilox.expr()}
-
-  @typedoc section: :pgrammar
-  @typedoc """
-  A statement that displays the result of the expression to standard output.
-  """
-  @type print_stmt :: {:print_stmt, expr :: Ilox.expr()}
-
-  @typedoc section: :pgrammar
-  @typedoc """
-  A list of statements or declarations wrapped in curly braces.
-  """
-  @type block :: {:block, list(declaration)}
-
-  @typedoc section: :pgrammar
-  @typedoc """
-  A conditional flow control statement made with an expression and a statement executed
-  when the expression is truthy. It may optionally have a else statement executed when the
-  expression is falsy.
-  """
-  @type if_stmt :: {:if_stmt, expr :: Ilox.expr(), truthy :: statement, falsy :: nil | statement}
-
-  @typedoc section: :pgrammar
-  @typedoc """
-  A looping flow control statement that only executes if the expression is truthy.
-
-  Robert Nystrom has implemented `for` loops as a desugaring into a while loop, so we will
-  do the same.
-  """
-  @type while_stmt :: {:while_stmt, expr :: Ilox.expr(), body :: statement}
-
-  @typedoc section: :pgrammar
-  @typedoc """
-  A looping flow control statement with three optional clauses inside parentheses,
-  separated by semicolons and a body after the closing parenthesis.
-
-  1. The _initializer_, executed exactly once before the loop starts. This may be an
-     expression or a variable declaration. If there is a variable declaration, the
-     variable is scoped to the for loop clauses and body.
-
-  2. The _condition_, which controls when to exit the loop, evaluated at the beginning of
-     each iteration. The body is executed if the condition is true.
-
-  3. The _increment_, an arbitrary expression whose result is discarded. It must have
-     a side effect to be useful (usually incrementing a variable).
-
-  This will be desugared into a `while` loop.
-  """
-  @type for_stmt ::
-          {:for_stmt, initializer :: var_decl | expr_stmt | nil, condition :: Ilox.expr() | nil,
-           increment :: Ilox.expr() | nil, body :: statement}
-
-  @typedoc section: :pgrammar
-  @typedoc """
-  Breaks the execution of a function and returns the result of the expression. If the
-  expression is omitted, a `nil` value is returned.
-  """
-  @type return_stmt :: {:return_stmt, keyword :: Token.t(), value :: nil | Ilox.expr()}
-
-  @typedoc section: :pgrammar
-  @typedoc """
-  A function call expression.
-
-  This stores the closing parenthesis token to use the location to report errors on
-  function call.
-  """
-  @type call ::
-          {:call, callee :: Ilox.expr(), arguments :: list(Ilox.expr()),
-           argc :: non_neg_integer(), closing :: Token.t()}
-
-  @spec parse(tokens :: String.t() | list(Token.t())) :: list(program)
+  @spec parse(tokens :: String.t() | list(Token.t())) :: list(Lox.program())
   def parse(source) when is_binary(source) do
     case Scanner.scan(source) do
       {:ok, tokens} -> parse(tokens)
@@ -172,9 +20,25 @@ defmodule Ilox.Parser do
     end
   end
 
-  def parse(tokens) when is_list(tokens), do: parse_program(tokens)
+  def parse(tokens) when is_list(tokens) do
+    ctx = %{errors: [], statements: [], tokens: tokens, scopes: [], break: 0}
 
-  @spec parse_expr(tokens :: String.t() | list(Token.t())) :: Ilox.expr()
+    case parse_program(ctx) do
+      %{errors: [], statements: []} ->
+        raise "Invalid state: no errors and no statements."
+
+      %{errors: [_ | _] = errors} ->
+        {:error, :parser, Enum.reverse(errors)}
+
+      %{statements: [_ | _] = statements} ->
+        {:ok, Enum.reverse(statements)}
+    end
+  rescue
+    e in Ilox.ParserError ->
+      {:error, :parser, [Exception.message(e)]}
+  end
+
+  @spec parse_expr(tokens :: String.t() | list(Token.t())) :: Lox.expr()
   def parse_expr(source) when is_binary(source) do
     case Scanner.scan(source) do
       {:ok, tokens} -> parse_expr(tokens)
@@ -194,35 +58,20 @@ defmodule Ilox.Parser do
       {:error, :parser, [Exception.message(e)]}
   end
 
-  defp parse_program(tokens) when is_list(tokens) do
-    ctx = %{errors: [], statements: [], tokens: tokens, scopes: [], break: 0}
+  defp parse_program(ctx) do
+    case ctx do
+      %{tokens: []} ->
+        raise Ilox.ParserError, error(ctx, Token.eof())
 
-    case parse_program(ctx) do
-      %{errors: [], statements: []} ->
-        raise "Invalid state: no errors and no statements."
+      %{tokens: [%Token{type: :eof} = token | _]} = ctx ->
+        raise Ilox.ParserError, error(ctx, token)
 
-      %{errors: [_ | _] = errors} ->
-        {:error, :parser, Enum.reverse(errors)}
-
-      %{statements: [_ | _] = statements} ->
-        {:ok, Enum.reverse(statements)}
+      _ ->
+        parse_declaration(ctx)
     end
-  rescue
-    e in Ilox.ParserError ->
-      {:error, :parser, [Exception.message(e)]}
   end
-
-  defp parse_program(%{tokens: []} = ctx),
-    do: parse_program(%{ctx | tokens: [Token.eof()]})
-
-  defp parse_program(%{tokens: [%Token{type: :eof} = token | _]} = ctx) do
-    raise Ilox.ParserError, token: token, message: "Expect expression.", ctx: ctx
-  end
-
-  defp parse_program(%{} = ctx), do: parse_declaration(ctx)
 
   defp parse_declaration(%{tokens: []} = ctx), do: ctx
-
   defp parse_declaration(%{tokens: [%Token{type: :eof} | _]} = ctx), do: ctx
 
   defp parse_declaration(%{tokens: [current | tokens]} = ctx) do
@@ -276,7 +125,7 @@ defmodule Ilox.Parser do
 
     %{statements: [body | statements]} = ctx = parse_block(%{ctx | break: ctx.break + 1})
 
-    add_statement(%{ctx | statements: statements}, {:function, name, params, arity, body})
+    add_statement(%{ctx | statements: statements}, {:fun_decl, name, params, arity, body})
   end
 
   defp parse_decl_params(%{tokens: []} = ctx), do: {[], ctx}
@@ -406,7 +255,7 @@ defmodule Ilox.Parser do
   defp desugar_for_initializer(initializer, body), do: {:block, [initializer, body]}
 
   defp parse_for_condition(%{tokens: [%Token{type: :semicolon} | _]} = ctx),
-    do: {{:literal_expr, true}, ctx}
+    do: {{:literal, true}, ctx}
 
   defp parse_for_condition(ctx), do: parse_expression(%{ctx | break: ctx.break + 1})
 
@@ -473,7 +322,7 @@ defmodule Ilox.Parser do
     do: parse_expression(%{ctx | tokens: [Token.eof()]})
 
   defp parse_expression(%{tokens: [%Token{type: :eof} = token | _]} = ctx) do
-    raise Ilox.ParserError, token: token, message: "Expect expression.", ctx: ctx
+    raise Ilox.ParserError, error(ctx, token)
   end
 
   defp parse_expression(ctx), do: parse_assignment(ctx)
@@ -486,14 +335,8 @@ defmodule Ilox.Parser do
       {value, ctx} = parse_assignment(ctx)
 
       case expr do
-        {:var_expr, name} ->
-          {{:assign_expr, name, value}, ctx}
-
-        _ ->
-          raise Ilox.ParserError,
-            token: equals,
-            message: "Invalid assignment target.",
-            ctx: ctx
+        {:variable, name} -> {{:assignment, name, value}, ctx}
+        _ -> raise Ilox.ParserError, error(ctx, equals, "Invalid assignment target.")
       end
     else
       {expr, ctx}
@@ -502,12 +345,12 @@ defmodule Ilox.Parser do
 
   defp parse_or(ctx) do
     {expr, ctx} = parse_and(ctx)
-    parse_binary_match(ctx, expr, [:or], &parse_and/1, :logical_expr)
+    parse_binary_match(ctx, expr, [:or], &parse_and/1, :logical)
   end
 
   defp parse_and(ctx) do
     {expr, ctx} = parse_equality(ctx)
-    parse_binary_match(ctx, expr, [:and], &parse_equality/1, :logical_expr)
+    parse_binary_match(ctx, expr, [:and], &parse_equality/1, :logical)
   end
 
   defp parse_equality(ctx) do
@@ -545,14 +388,10 @@ defmodule Ilox.Parser do
 
       case parse_unary(ctx) do
         {nil, ctx} ->
-          raise Ilox.ParserError,
-            token: current,
-            message: "Expect right-hand expression.",
-            where: Errors.where(current),
-            ctx: ctx
+          raise Ilox.ParserError, error(ctx, current, "Expect right-hand expression.", true)
 
         {right, ctx} ->
-          {{:unary_expr, operator, right}, ctx}
+          {{:unary, operator, right}, ctx}
       end
     else
       parse_call(ctx)
@@ -577,7 +416,7 @@ defmodule Ilox.Parser do
     count = Enum.count(args)
     ctx = check_arity(ctx, count, current, "arguments")
     {closing, %{tokens: [current | tokens]} = ctx} = expect_right_paren(ctx, "arguments")
-    call = {:call, callee, args, count, closing}
+    call = {:fcall, callee, args, count, closing}
 
     if type_match(current, :left_paren) do
       parse_call(%{ctx | tokens: tokens}, call)
@@ -616,29 +455,29 @@ defmodule Ilox.Parser do
   defp parse_primary(%{tokens: [%Token{type: :eof} | _]} = ctx), do: {nil, ctx}
 
   defp parse_primary(%{tokens: [%Token{type: :Qfalse} | tokens]} = ctx),
-    do: {{:literal_expr, false}, %{ctx | tokens: tokens}}
+    do: {{:literal, false}, %{ctx | tokens: tokens}}
 
   defp parse_primary(%{tokens: [%Token{type: :Qnil} | tokens]} = ctx),
-    do: {{:literal_expr, nil}, %{ctx | tokens: tokens}}
+    do: {{:literal, nil}, %{ctx | tokens: tokens}}
 
   defp parse_primary(%{tokens: [%Token{type: :Qtrue} | tokens]} = ctx),
-    do: {{:literal_expr, true}, %{ctx | tokens: tokens}}
+    do: {{:literal, true}, %{ctx | tokens: tokens}}
 
   defp parse_primary(%{tokens: [%Token{type: type} = current | tokens]} = ctx)
        when type in [:number, :string],
-       do: {{:literal_expr, current}, %{ctx | tokens: tokens}}
+       do: {{:literal, current}, %{ctx | tokens: tokens}}
 
   defp parse_primary(%{tokens: [%Token{type: :identifier} = current | tokens]} = ctx),
-    do: {{:var_expr, current}, %{ctx | tokens: tokens}}
+    do: {{:variable, current}, %{ctx | tokens: tokens}}
 
   defp parse_primary(%{tokens: [%Token{type: :left_paren} | tokens]} = ctx) do
     {expr, ctx} = parse_expression(%{ctx | tokens: tokens})
-    {_, ctx} = expect_right_paren(ctx, "expression")
-    {{:group_expr, expr}, ctx}
+    {_, ctx} = expect_right_paren(ctx, "expr")
+    {{:group, expr}, ctx}
   end
 
   defp parse_primary(%{tokens: [current | _]} = ctx) do
-    raise Ilox.ParserError, token: current, message: "Expect expression.", ctx: ctx
+    raise Ilox.ParserError, error(ctx, current)
   end
 
   defp expect_identifier(ctx, kind), do: expect(ctx, :identifier, "Expect #{kind} name.")
@@ -650,11 +489,7 @@ defmodule Ilox.Parser do
     do: {current, %{ctx | tokens: tokens}}
 
   defp expect(%{tokens: [token | _]} = ctx, _type, message) do
-    raise Ilox.ParserError,
-      token: token,
-      message: message,
-      where: Errors.where(token),
-      ctx: ctx
+    raise Ilox.ParserError, error(ctx, token, message, true)
   end
 
   defp parse_binary_match(%{tokens: []} = ctx, expr, _types, _consumer), do: {expr, ctx}
@@ -667,18 +502,14 @@ defmodule Ilox.Parser do
          expr,
          types,
          consumer,
-         expr_type \\ :binary_expr
+         expr_type \\ :binary
        ) do
     if type_match(current, types) do
       {operator, ctx} = next_token(ctx)
 
       case consumer.(ctx) do
         {nil, ctx} ->
-          raise Ilox.ParserError,
-            token: current,
-            message: "Expect right-hand expression.",
-            where: Errors.where(current),
-            ctx: ctx
+          raise Ilox.ParserError, error(ctx, current, "Expect right-hand expression.", true)
 
         {right, ctx} ->
           expr = {expr_type, expr, operator, right}
@@ -724,4 +555,12 @@ defmodule Ilox.Parser do
 
   defp next_token(%{tokens: [%Token{} = previous | tokens]} = ctx),
     do: {previous, %{ctx | tokens: tokens}}
+
+  defp error(ctx, token, message \\ "Expect expression.", where \\ false)
+
+  defp error(ctx, token, message, false),
+    do: [ctx: ctx, message: message, token: token]
+
+  defp error(ctx, token, message, true),
+    do: [ctx: ctx, message: message, token: token, where: Errors.where(token)]
 end

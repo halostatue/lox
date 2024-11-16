@@ -45,7 +45,7 @@ defmodule Ilox.Interpreter do
       {:error, :runtime, Exception.message(e)}
   end
 
-  @spec eval_expr(Env.t() | nil, String.t() | list(Token.t()) | Ilox.expr()) ::
+  @spec eval_expr(Env.t() | nil, String.t() | list(Token.t()) | Lox.expr()) ::
           {:ok, binary()} | {:error, atom(), String.t()}
   def eval_expr(env \\ nil, input)
 
@@ -153,7 +153,7 @@ defmodule Ilox.Interpreter do
     end
   end
 
-  defp exec_statement(env, {:function, name, _params, arity, _body} = fun) do
+  defp exec_statement(env, {:fun_decl, name, _params, arity, _body} = fun) do
     fun =
       Callable.new(
         arity: arity,
@@ -168,14 +168,14 @@ defmodule Ilox.Interpreter do
 
   # defp eval_expression(env, nil), do: {env, nil}
 
-  defp eval_expression(env, {:group_expr, expr}), do: eval_expression(env, expr)
+  defp eval_expression(env, {:group, expr}), do: eval_expression(env, expr)
 
-  defp eval_expression(env, {:literal_expr, value}) when value in [true, false, nil],
+  defp eval_expression(env, {:literal, value}) when value in [true, false, nil],
     do: {env, value}
 
-  defp eval_expression(env, {:literal_expr, %{literal: literal}}), do: {env, literal}
+  defp eval_expression(env, {:literal, %{literal: literal}}), do: {env, literal}
 
-  defp eval_expression(env, {:unary_expr, %Token{} = operator, right}) do
+  defp eval_expression(env, {:unary, %Token{} = operator, right}) do
     {env, right} = eval_expression(env, right)
 
     value =
@@ -193,13 +193,13 @@ defmodule Ilox.Interpreter do
           !right
 
         _ ->
-          raise "Invalid unary expression: #{inspect(operator.type)}(#{inspect(right)})."
+          raise "Invalid unary expr: #{inspect(operator.type)}(#{inspect(right)})."
       end
 
     {env, value}
   end
 
-  defp eval_expression(env, {:binary_expr, left, %Token{} = operator, right}) do
+  defp eval_expression(env, {:binary, left, %Token{} = operator, right}) do
     {env, left} = eval_expression(env, left)
     {env, right} = eval_expression(env, right)
 
@@ -213,14 +213,14 @@ defmodule Ilox.Interpreter do
     {env, eval_operator(operator, left, right, types)}
   end
 
-  defp eval_expression(env, {:var_expr, name} = expr), do: {env, Env.get(env, expr, name)}
+  defp eval_expression(env, {:variable, name} = expr), do: {env, Env.get(env, expr, name)}
 
-  defp eval_expression(env, {:assign_expr, name, value}) do
+  defp eval_expression(env, {:assignment, name, value}) do
     {env, value} = eval_expression(env, value)
     Env.assign(env, name, value)
   end
 
-  defp eval_expression(env, {:logical_expr, left, %Token{type: operator}, right})
+  defp eval_expression(env, {:logical, left, %Token{type: operator}, right})
        when operator in [:or, :and] do
     {env, left} = eval_expression(env, left)
     truthy? = !!left
@@ -232,7 +232,7 @@ defmodule Ilox.Interpreter do
     end
   end
 
-  defp eval_expression(env, {:call, callee, arguments, argc, closing}) do
+  defp eval_expression(env, {:fcall, callee, arguments, argc, closing}) do
     {env, callee} = eval_expression(env, callee)
 
     if !is_callable(callee) do

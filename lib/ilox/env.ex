@@ -74,7 +74,7 @@ defmodule Ilox.Env do
   @type t :: %__MODULE__{
           stack: list(Scope.id()),
           scopes: %{required(Scope.id()) => term()},
-          locals: %{required(Ilox.expr()) => non_neg_integer()},
+          locals: %{required(Lox.expr()) => non_neg_integer()},
           print: (IO.chardata() | String.Chars.t() -> any())
         }
 
@@ -99,7 +99,7 @@ defmodule Ilox.Env do
   @doc """
   Sets the locals for the provided environment.
   """
-  @spec set_locals(t, %{required(Ilox.expr()) => non_neg_integer()}) :: t
+  @spec set_locals(t, %{required(Lox.expr()) => non_neg_integer()}) :: t
   def set_locals(%__MODULE__{} = env, %{} = locals), do: %{env | locals: locals}
 
   @doc """
@@ -211,7 +211,7 @@ defmodule Ilox.Env do
   Assign a value to a defined variable, consulting the `locals` map for proper scope
   handling.
   """
-  @spec assign(t, Ilox.expr(), Token.t(), term()) :: {t, term()}
+  @spec assign(t, Lox.expr(), Token.t(), term()) :: {t, term()}
   def assign(%__MODULE__{} = env, expr, %Token{type: :identifier} = id, value),
     do: {do_assign(env, id, value, Map.get(env.locals, expr)), value}
 
@@ -228,7 +228,7 @@ defmodule Ilox.Env do
   Retrieve the value from the defined variable, consulting the `locals` map for proper
   scope handling.
   """
-  @spec get(t, Ilox.expr(), Token.t()) :: term()
+  @spec get(t, Lox.expr(), Token.t()) :: term()
   def get(%__MODULE__{} = env, expr, %Token{type: :identifier} = id),
     do: do_get(env, id, Map.get(env.locals, expr))
 

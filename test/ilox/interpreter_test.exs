@@ -295,7 +295,7 @@ defmodule Ilox.InterpreterTest do
 
     test "print clock();" do
       assert {:ok, output: [output]} = run("print clock();")
-      assert output =~ ~r/^-?\d+(?:e\d+)?$/
+      assert output =~ ~r/^-?\d+(?:\.\d+)?(?:e\d+)?$/
     end
 
     test "fun add(a, b, c) { print a + b + c; } add(1, 2, 3);" do

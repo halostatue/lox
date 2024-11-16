@@ -35,7 +35,7 @@ defmodule Ilox.Callable do
 
   defp do_call(env, native, args) when is_function(native, 2), do: native.(env, args)
 
-  defp do_call(env, {:function, _name, params, _arity, body}, arguments) do
+  defp do_call(env, {:fun_decl, _name, params, _arity, body}, arguments) do
     env =
       params
       |> Enum.zip(arguments)

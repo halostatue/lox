@@ -148,7 +148,7 @@ defmodule Lox do
     inside the `else` block. Declarations in a branch must be inside of a block.
 
     ```
-    if (expr) {
+    if (expression) {
       print "yes";
     } else {
       print "no";
@@ -176,6 +176,9 @@ defmodule Lox do
       print a;
     }
     ```
+
+    `for` statements are transformed ("desugared") into appropriately-scoped `while`
+    loops.
 
   ### Functions (3.8)
 
@@ -333,12 +336,239 @@ defmodule Lox do
 
   ### The Standard Library (3.10)
 
-  There is basically none, defining one function `clock()` that returns seconds since the
-  program started.
+  The standard library offers two functions:
+
+  - `clock/0`, which returns a monotonic time in seconds (this is defined in _Crafting
+    Interpreters_)
+  - `env/0`, which returns a string representation of the current environment. In Ilox,
+    this is the *complete* operating environment, not the current scope.
+
+  ## Grammar
+
+  Ilox uses a context free grammar for expressions and adapts that into a parsing grammar
+  encoding precedence rules.
+
+  ### Context-Free Expression Grammar
+
+  ```
+  expression  → binary | grouping | literal | unary ;
+  binary      → expression binaryOp expression ;
+  binaryOp    → "=="  | "!="
+              | "<"   | "<=" | ">" | ">="
+              | "+"   | "-"  | "*" | "/"
+              | "and" | "or" ;
+  grouping    → "(" expression ")" ;
+  literal     → NUMBER | STRING | "true" | "false" | "nil" ;
+  unary       → unaryOp expression ;
+  unaryOp     → "-" | "!" ;
+  ```
+
+  ### Parsing Grammar
+
+  This grammar rearranges the context-free expression grammar into one that encodes
+  precedence and adds *statements* for side effects.
+
+  ```
+  program     → declaration* EOF ;
+
+  declaration → classDecl
+              | funDecl
+              | varDecl
+              | statement ;
+
+  classDecl   → "class" IDENTIFIER ( "<" IDENTIFIER )?
+                "{" function* "}" ;
+  funDecl     → "fun" function ;
+  varDecl     → "var" IDENTIFIER ( "=" expression )? ";" ;
+
+  statement   → exprStmt
+              | forStmt
+              | ifStmt
+              | printStmt
+              | returnStmt
+              | whileStmt
+              | block ;
+
+  exprStmt    → expression ";" ;
+  forStmt     → "for" "(" ( varDecl | exprStmt | ";" )
+                          expression? ";"
+                          expression? ")" statement ;
+  ifStmt      → "if" "(" expression ")" statement
+                ( "else" statement )? ;
+  printStmt   → "print" expression ";" ;
+  returnStmt  → "return" expression? ";" ;
+  whileStmt   → "while" "(" expression ")" statement ;
+  block       → "{" declaration* "}" ;
+
+  expression  → assignment ;
+
+  assignment  → IDENTIFIER "=" assignment | logical ;
+
+  logical     → logicAnd ( "or" logicAnd )* ;
+  logicAnd    → equality ( "and" equality )* ;
+  equality    → comparison ( ( "!=" | "==" ) comparison )* ;
+  comparison  → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
+  term        → factor ( ( "-" | "+" ) factor )* ;
+  factor      → unary ( ( "/" | "*" ) unary )* ;
+
+  unary       → ( ( "!" | "-" ) unary ) | call ;
+  call        → primary  ( "(" arguments? ")" )* ;
+  primary     → "true" | "false" | "nil"
+              | NUMBER | STRING | IDENTIFIER |  "(" expression ")" ;
+
+  function    → IDENTIFIER "(" parameters? ")" block ;
+  parameters  → IDENTIFIER ( "," IDENTIFIER )* ;
+  arguments   → expression ( "," expression )* ;
+  ```
 
   [1]: https://craftinginterpreters.com/the-lox-language.html
   [2]: https://craftinginterpreters.com
   [3]: https://craftinginterpreters.com/a-tree-walk-interpreter.html
   [4]: https://craftinginterpreters.com/a-bytecode-virtual-machine.html
   """
+
+  alias Ilox.Token
+
+  @typedoc """
+  The list of declarations representing the Lox program.
+
+  ```
+  program     → declaration* EOF ;
+  ```
+  """
+  @type program :: list(declaration)
+
+  @typedoc """
+  A class, function, or variable declaration, or a statement.
+  """
+  @type declaration :: fun_decl | var_decl | statement
+
+  @typedoc """
+  A function definition.
+  """
+  @type fun_decl ::
+          {
+            :fun_decl,
+            name :: Token.t(),
+            params :: list(Token.t()),
+            arity :: non_neg_integer(),
+            body :: list(statement)
+          }
+
+  @typedoc """
+  A variable declaration with an optional initialization expression.
+  """
+  @type var_decl :: {:var_decl, identifier :: Token.t(), initializer :: Lox.expr() | nil}
+
+  @typedoc """
+  Supported program statements. `for` statements are transformed into `while` blocks
+  statements during parsing.
+  """
+  @type statement :: expr_stmt | if_stmt | print_stmt | return_stmt | while_stmt | block
+
+  @typedoc """
+  An expression statement. The expression is evaluated, but is essentially side-effect
+  free.
+  """
+  @type expr_stmt :: {:expr_stmt, expr :: Lox.expr()}
+
+  @typedoc """
+  A conditional flow control statement made with an expression and a statement executed
+  when the expression is truthy. It may optionally have a else statement executed when the
+  expression is falsy.
+  """
+  @type if_stmt :: {:if_stmt, expr :: Lox.expr(), truthy :: statement, falsy :: nil | statement}
+
+  @typedoc """
+  A statement that displays the result of its expression to standard output.
+  """
+  @type print_stmt :: {:print_stmt, expr :: Lox.expr()}
+
+  @typedoc """
+  Breaks the execution of a function and returns the result of the expression, or `nil` if
+  it is omitted.
+
+  If a function terminates execution without a `return` statement, `nil` is implicitly
+  returned.
+  """
+  @type return_stmt :: {:return_stmt, keyword :: Token.t(), value :: nil | Lox.expr()}
+
+  @typedoc """
+  A looping flow control statement that only executes if the expression is truthy.
+  """
+  @type while_stmt :: {:while_stmt, expr :: Lox.expr(), body :: statement}
+
+  @typedoc """
+  A list of statements or declarations wrapped in curly braces.
+  """
+  @type block :: {:block, list(declaration)}
+
+  # expression  → assignment ;
+
+  # assignment  → IDENTIFIER "=" assignment | logical ;
+
+  # logical     → logicAnd ( "or" logicAnd )* ;
+  # logicAnd    → equality ( "and" equality )* ;
+  # equality    → comparison ( ( "!=" | "==" ) comparison )* ;
+  # comparison  → term ( ( ">" | ">=" | "<" | "<=" ) term )* ;
+  # term        → factor ( ( "-" | "+" ) factor )* ;
+  # factor      → unary ( ( "/" | "*" ) unary )* ;
+
+  # unary       → ( ( "!" | "-" ) unary ) | call ;
+  # call        → primary  ( "(" arguments? ")" )* ;
+  # primary     → "true" | "false" | "nil"
+  #             | NUMBER | STRING | IDENTIFIER |  "(" expression ")" ;
+
+  # function    → IDENTIFIER "(" parameters? ")" block ;
+  # parameters  → IDENTIFIER ( "," IDENTIFIER )* ;
+  # arguments   → expression ( "," expression )* ;
+  # ```
+
+  @typedoc """
+  Any expression that evaluates to a value.
+  """
+  @type expr :: assignment | logical | binary_expr | unary | call | literal | group | variable
+
+  @typedoc """
+  A variable assignment expression.
+  """
+  @type assignment :: {:assignment, identifier :: Token.t(), value :: expr}
+
+  @typedoc """
+  Two expressions with a logical operator ("and", "or") between them.
+  """
+  @type logical :: {:logical, left :: expr, operator :: Token.t(), right :: expr}
+
+  @typedoc """
+  Two expressions with a binary operator (one of "==", "!=", "<", "<=", ">", ">=", "+"
+  , "-" , "*", or "/") between them.
+  """
+  @type binary_expr :: {:binary, left :: expr, operator :: Token.t(), right :: expr}
+
+  @typedoc """
+  A unary operator ("-", "!") followed by an expression.
+  """
+  @type unary :: {:unary, operator :: Token.t(), right :: expr}
+
+  @typedoc """
+  A function call expression.
+
+  This stores the closing parenthesis token to use the location to report errors on
+  function call.
+  """
+  @type call ::
+          {:fcall, callee :: Lox.expr(), arguments :: list(Lox.expr()), argc :: non_neg_integer(),
+           closing :: Token.t()}
+
+  @typedoc """
+  A literal value. One of `nil`, `true`, `false`, any floating point number, any integer,
+  or any UTF-8 string.
+  """
+  @type literal :: {:literal, value :: number() | binary() | true | false | nil}
+
+  @typedoc "An expression surrounded by parentheses."
+  @type group :: {:group, expr}
+
+  @typedoc "A named reference to a variable."
+  @type variable :: {:variable, identifier :: Token.t()}
 end

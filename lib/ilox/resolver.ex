@@ -94,14 +94,14 @@ defmodule Ilox.Resolver do
     |> Ctx.define(name)
   end
 
-  defp resolve_statement(ctx, {type, expression})
+  defp resolve_statement(ctx, {type, expr})
        when type in [:expr_stmt, :print_stmt],
-       do: resolve_expression(ctx, expression)
+       do: resolve_expression(ctx, expr)
 
-  defp resolve_statement(ctx, {:return_stmt, token, expression}) do
+  defp resolve_statement(ctx, {:return_stmt, token, expr}) do
     ctx
     |> Ctx.maybe_error(ctx.function_type == :none, token, "Can't return from top-level code.")
-    |> resolve_expression(expression)
+    |> resolve_expression(expr)
   end
 
   defp resolve_statement(ctx, {:if_stmt, condition, then_branch, else_branch}) do
@@ -117,7 +117,7 @@ defmodule Ilox.Resolver do
     |> resolve_statement(body)
   end
 
-  defp resolve_statement(ctx, {:function, name, _params, _arity, _body} = fun) do
+  defp resolve_statement(ctx, {:fun_decl, name, _params, _arity, _body} = fun) do
     ctx
     |> Ctx.declare(name)
     |> Ctx.define(name)
@@ -132,38 +132,38 @@ defmodule Ilox.Resolver do
   @spec resolve_expression(Ctx.t(), list(nil | tuple())) :: Ctx.t()
   defp resolve_expression(ctx, nil), do: ctx
 
-  defp resolve_expression(ctx, {:group_expr, expr}), do: resolve_expression(ctx, expr)
+  defp resolve_expression(ctx, {:group, expr}), do: resolve_expression(ctx, expr)
 
-  defp resolve_expression(ctx, {:binary_expr, left, _token, right}) do
+  defp resolve_expression(ctx, {:binary, left, _token, right}) do
     ctx
     |> resolve_expression(left)
     |> resolve_expression(right)
   end
 
-  defp resolve_expression(ctx, {:call, callee, arguments, _argc, _closing}) do
+  defp resolve_expression(ctx, {:fcall, callee, arguments, _argc, _closing}) do
     ctx
     |> resolve_expression(callee)
     |> resolve_expressions(arguments)
   end
 
-  defp resolve_expression(ctx, {:literal_expr, _}), do: ctx
+  defp resolve_expression(ctx, {:literal, _}), do: ctx
 
-  defp resolve_expression(ctx, {:logical_expr, left, _token, right}) do
+  defp resolve_expression(ctx, {:logical, left, _token, right}) do
     ctx
     |> resolve_expression(left)
     |> resolve_expression(right)
   end
 
-  defp resolve_expression(ctx, {:unary_expr, _operator, right}),
+  defp resolve_expression(ctx, {:unary, _operator, right}),
     do: resolve_expression(ctx, right)
 
-  defp resolve_expression(ctx, {:var_expr, name} = expr) do
+  defp resolve_expression(ctx, {:variable, name} = expr) do
     ctx
     |> check_read_in_init(name)
     |> resolve_local(expr, name)
   end
 
-  defp resolve_expression(ctx, {:assign_expr, name, value} = expr) do
+  defp resolve_expression(ctx, {:assignment, name, value} = expr) do
     ctx
     |> resolve_expression(value)
     |> resolve_local(expr, name)
@@ -191,7 +191,7 @@ defmodule Ilox.Resolver do
   end
 
   @spec resolve_function(Ctx.t(), tuple(), type :: atom()) :: Ctx.t()
-  defp resolve_function(ctx, {:function, _name, params, _arity, body}, type) do
+  defp resolve_function(ctx, {:fun_decl, _name, params, _arity, body}, type) do
     enclosing_function = ctx.function_type
 
     ctx =

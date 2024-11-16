@@ -18,11 +18,7 @@ defmodule Lox.MixProject do
           <script>mermaid.initialize({startOnLoad: true})</script>
           """,
           epub: ""
-        },
-        groups_for_docs: [
-          "Context-Free Grammar": &(&1[:section] == :cfgrammar),
-          "Parsing Grammar": &(&1[:section] == :pgrammar)
-        ]
+        }
       ]
     ]
   end

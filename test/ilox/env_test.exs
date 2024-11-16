@@ -419,7 +419,6 @@ defmodule Ilox.EnvTest do
     end
 
     test "inspect", %{env: env} do
-      # assert ~s(#Env<["inner", "<globals>"] scopes: %{"<globals>" => #Scope<["clock", "env", "global"]>, "closure" => #Scope<["closure"] enclosing: "<globals>">, "inner" => #Scope<["inner"] enclosing: "<globals>">}>) ==
       assert ~s(#Env<["inner", "<globals>"] scopes: %{"<globals>" => #Scope<["global"]>, "closure" => #Scope<["closure"] enclosing: "<globals>">, "inner" => #Scope<["inner"] enclosing: "<globals>">} locals: %{}>) ==
                inspect(env)
     end

@@ -70,9 +70,9 @@ defmodule Ilox.ResolverTest do
     test "nested blocks 1" do
       assert %{
                locals: [
-                 {{:var_expr, %Token{type: :identifier, line: 3, lexeme: "value"}}, 0},
-                 {{:var_expr, %Token{type: :identifier, line: 7, lexeme: "value"}}, 0},
-                 {{:var_expr, %Token{type: :identifier, line: 10, lexeme: "value"}}, 0}
+                 {{:variable, %Token{type: :identifier, line: 3, lexeme: "value"}}, 0},
+                 {{:variable, %Token{type: :identifier, line: 7, lexeme: "value"}}, 0},
+                 {{:variable, %Token{type: :identifier, line: 10, lexeme: "value"}}, 0}
                ]
              } =
                resolve("""
@@ -95,10 +95,10 @@ defmodule Ilox.ResolverTest do
     test "scope" do
       assert %{
                locals: [
-                 {{:var_expr, %Token{type: :identifier, line: 9, lexeme: "a"}}, 0},
-                 {{:var_expr, %Token{type: :identifier, line: 10, lexeme: "b"}}, 1},
-                 {{:var_expr, %Token{type: :identifier, line: 13, lexeme: "a"}}, 0},
-                 {{:var_expr, %Token{type: :identifier, line: 14, lexeme: "b"}}, 0}
+                 {{:variable, %Token{type: :identifier, line: 9, lexeme: "a"}}, 0},
+                 {{:variable, %Token{type: :identifier, line: 10, lexeme: "b"}}, 1},
+                 {{:variable, %Token{type: :identifier, line: 13, lexeme: "a"}}, 0},
+                 {{:variable, %Token{type: :identifier, line: 14, lexeme: "b"}}, 0}
                ]
              } =
                resolve("""
@@ -127,15 +127,15 @@ defmodule Ilox.ResolverTest do
     test "nested scope" do
       assert %{
                locals: [
-                 {{:var_expr, %Token{type: :identifier, line: 10, lexeme: "a"}}, 0},
-                 {{:var_expr, %Token{type: :identifier, line: 11, lexeme: "b"}}, 1},
-                 {{:var_expr, %Token{type: :identifier, line: 12, lexeme: "c"}}, 2},
-                 {{:var_expr, %Token{type: :identifier, line: 14, lexeme: "a"}}, 0},
-                 {{:var_expr, %Token{type: :identifier, line: 15, lexeme: "b"}}, 0},
-                 {{:var_expr, %Token{type: :identifier, line: 16, lexeme: "c"}}, 1},
-                 {{:var_expr, %Token{type: :identifier, line: 18, lexeme: "a"}}, 0},
-                 {{:var_expr, %Token{type: :identifier, line: 19, lexeme: "b"}}, 0},
-                 {{:var_expr, %Token{type: :identifier, line: 20, lexeme: "c"}}, 0}
+                 {{:variable, %Token{type: :identifier, line: 10, lexeme: "a"}}, 0},
+                 {{:variable, %Token{type: :identifier, line: 11, lexeme: "b"}}, 1},
+                 {{:variable, %Token{type: :identifier, line: 12, lexeme: "c"}}, 2},
+                 {{:variable, %Token{type: :identifier, line: 14, lexeme: "a"}}, 0},
+                 {{:variable, %Token{type: :identifier, line: 15, lexeme: "b"}}, 0},
+                 {{:variable, %Token{type: :identifier, line: 16, lexeme: "c"}}, 1},
+                 {{:variable, %Token{type: :identifier, line: 18, lexeme: "a"}}, 0},
+                 {{:variable, %Token{type: :identifier, line: 19, lexeme: "b"}}, 0},
+                 {{:variable, %Token{type: :identifier, line: 20, lexeme: "c"}}, 0}
                ]
              } =
                resolve("""
@@ -312,13 +312,13 @@ defmodule Ilox.ResolverTest do
     test "for (var a = 2; a > 0; a = a - 1) print a;" do
       assert %{
                locals: [
-                 {{:var_expr, %Token{type: :identifier, line: 1, lexeme: "a"}}, 0},
-                 {{:var_expr, %Token{type: :identifier, line: 1, lexeme: "a"}}, 1},
-                 {{:var_expr, %Token{type: :identifier, line: 2, lexeme: "a"}}, 1},
-                 {{:assign_expr, %Token{type: :identifier, line: 1, lexeme: "a"},
-                   {:binary_expr, {:var_expr, %Token{type: :identifier, line: 1, lexeme: "a"}},
+                 {{:variable, %Token{type: :identifier, line: 1, lexeme: "a"}}, 0},
+                 {{:variable, %Token{type: :identifier, line: 1, lexeme: "a"}}, 1},
+                 {{:variable, %Token{type: :identifier, line: 2, lexeme: "a"}}, 1},
+                 {{:assignment, %Token{type: :identifier, line: 1, lexeme: "a"},
+                   {:binary, {:variable, %Token{type: :identifier, line: 1, lexeme: "a"}},
                     %Token{type: :minus, line: 1, lexeme: "-"},
-                    {:literal_expr, %Token{type: :number, line: 1, lexeme: "1", literal: 1.0}}}},
+                    {:literal, %Token{type: :number, line: 1, lexeme: "1", literal: 1.0}}}},
                   1}
                ]
              } =
@@ -331,13 +331,13 @@ defmodule Ilox.ResolverTest do
     test "for (var a = 3; a > 0; a = a - 1) { print a; }" do
       assert %{
                locals: [
-                 {{:var_expr, %Token{type: :identifier, line: 1, lexeme: "a"}}, 0},
-                 {{:var_expr, %Token{type: :identifier, line: 1, lexeme: "a"}}, 1},
-                 {{:var_expr, %Token{type: :identifier, line: 2, lexeme: "a"}}, 1},
-                 {{:assign_expr, %Token{type: :identifier, line: 1, lexeme: "a"},
-                   {:binary_expr, {:var_expr, %Token{type: :identifier, line: 1, lexeme: "a"}},
+                 {{:variable, %Token{type: :identifier, line: 1, lexeme: "a"}}, 0},
+                 {{:variable, %Token{type: :identifier, line: 1, lexeme: "a"}}, 1},
+                 {{:variable, %Token{type: :identifier, line: 2, lexeme: "a"}}, 1},
+                 {{:assignment, %Token{type: :identifier, line: 1, lexeme: "a"},
+                   {:binary, {:variable, %Token{type: :identifier, line: 1, lexeme: "a"}},
                     %Token{type: :minus, line: 1, lexeme: "-"},
-                    {:literal_expr, %Token{type: :number, line: 1, lexeme: "1", literal: 1.0}}}},
+                    {:literal, %Token{type: :number, line: 1, lexeme: "1", literal: 1.0}}}},
                   1}
                ]
              } =
@@ -371,9 +371,9 @@ defmodule Ilox.ResolverTest do
     test "fun add(a, b, c) { print a + b + c; } add(1, 2, 3);" do
       assert %{
                locals: [
-                 {{:var_expr, %Token{type: :identifier, line: 2, lexeme: "a"}}, 1},
-                 {{:var_expr, %Token{type: :identifier, line: 2, lexeme: "b"}}, 1},
-                 {{:var_expr, %Token{type: :identifier, line: 2, lexeme: "c"}}, 1}
+                 {{:variable, %Token{type: :identifier, line: 2, lexeme: "a"}}, 1},
+                 {{:variable, %Token{type: :identifier, line: 2, lexeme: "b"}}, 1},
+                 {{:variable, %Token{type: :identifier, line: 2, lexeme: "c"}}, 1}
                ]
              } =
                resolve("""
@@ -388,9 +388,9 @@ defmodule Ilox.ResolverTest do
     test "fun add(a, b, c) { print a + b + c; } print add;" do
       assert %{
                locals: [
-                 {{:var_expr, %Token{type: :identifier, line: 2, lexeme: "a"}}, 1},
-                 {{:var_expr, %Token{type: :identifier, line: 2, lexeme: "b"}}, 1},
-                 {{:var_expr, %Token{type: :identifier, line: 2, lexeme: "c"}}, 1}
+                 {{:variable, %Token{type: :identifier, line: 2, lexeme: "a"}}, 1},
+                 {{:variable, %Token{type: :identifier, line: 2, lexeme: "b"}}, 1},
+                 {{:variable, %Token{type: :identifier, line: 2, lexeme: "c"}}, 1}
                ]
              } =
                resolve("""
@@ -405,9 +405,9 @@ defmodule Ilox.ResolverTest do
     test "fun add(a, b, c) { return a + b + c; } print add(1, 2, 3);" do
       assert %{
                locals: [
-                 {{:var_expr, %Token{type: :identifier, line: 2, lexeme: "a"}}, 1},
-                 {{:var_expr, %Token{type: :identifier, line: 2, lexeme: "b"}}, 1},
-                 {{:var_expr, %Token{type: :identifier, line: 2, lexeme: "c"}}, 1}
+                 {{:variable, %Token{type: :identifier, line: 2, lexeme: "a"}}, 1},
+                 {{:variable, %Token{type: :identifier, line: 2, lexeme: "b"}}, 1},
+                 {{:variable, %Token{type: :identifier, line: 2, lexeme: "c"}}, 1}
                ]
              } =
                resolve("""
@@ -422,9 +422,9 @@ defmodule Ilox.ResolverTest do
     test "fun add(a, b, c) { print a + b + c; } print add(1, 2, 3);" do
       assert %{
                locals: [
-                 {{:var_expr, %Token{type: :identifier, line: 2, lexeme: "a"}}, 1},
-                 {{:var_expr, %Token{type: :identifier, line: 2, lexeme: "b"}}, 1},
-                 {{:var_expr, %Token{type: :identifier, line: 2, lexeme: "c"}}, 1}
+                 {{:variable, %Token{type: :identifier, line: 2, lexeme: "a"}}, 1},
+                 {{:variable, %Token{type: :identifier, line: 2, lexeme: "b"}}, 1},
+                 {{:variable, %Token{type: :identifier, line: 2, lexeme: "c"}}, 1}
                ]
              } =
                resolve("""
@@ -452,10 +452,10 @@ defmodule Ilox.ResolverTest do
 
       assert %{
                locals: [
-                 {{:var_expr, %Token{type: :identifier, line: 2, lexeme: "n"}}, 1},
-                 {{:var_expr, %Token{type: :identifier, line: 2, lexeme: "n"}}, 1},
-                 {{:var_expr, %Token{type: :identifier, line: 4, lexeme: "n"}}, 1},
-                 {{:var_expr, %Token{type: :identifier, line: 4, lexeme: "n"}}, 1}
+                 {{:variable, %Token{type: :identifier, line: 2, lexeme: "n"}}, 1},
+                 {{:variable, %Token{type: :identifier, line: 2, lexeme: "n"}}, 1},
+                 {{:variable, %Token{type: :identifier, line: 4, lexeme: "n"}}, 1},
+                 {{:variable, %Token{type: :identifier, line: 4, lexeme: "n"}}, 1}
                ]
              } = resolve(src)
     end
@@ -475,17 +475,17 @@ defmodule Ilox.ResolverTest do
 
       assert %{
                locals: [
-                 {{:var_expr, %Token{type: :identifier, line: 2, lexeme: "n"}}, 1},
-                 {{:var_expr, %Token{type: :identifier, line: 2, lexeme: "n"}}, 1},
-                 {{:var_expr, %Token{type: :identifier, line: 3, lexeme: "n"}}, 1},
-                 {{:var_expr, %Token{type: :identifier, line: 3, lexeme: "n"}}, 1},
-                 {{:var_expr, %Token{type: :identifier, line: 6, lexeme: "i"}}, 0},
-                 {{:var_expr, %Token{type: :identifier, line: 6, lexeme: "i"}}, 1},
-                 {{:var_expr, %Token{type: :identifier, line: 7, lexeme: "i"}}, 1},
-                 {{:assign_expr, %Token{type: :identifier, line: 6, lexeme: "i"},
-                   {:binary_expr, {:var_expr, %Token{type: :identifier, line: 6, lexeme: "i"}},
+                 {{:variable, %Token{type: :identifier, line: 2, lexeme: "n"}}, 1},
+                 {{:variable, %Token{type: :identifier, line: 2, lexeme: "n"}}, 1},
+                 {{:variable, %Token{type: :identifier, line: 3, lexeme: "n"}}, 1},
+                 {{:variable, %Token{type: :identifier, line: 3, lexeme: "n"}}, 1},
+                 {{:variable, %Token{type: :identifier, line: 6, lexeme: "i"}}, 0},
+                 {{:variable, %Token{type: :identifier, line: 6, lexeme: "i"}}, 1},
+                 {{:variable, %Token{type: :identifier, line: 7, lexeme: "i"}}, 1},
+                 {{:assignment, %Token{type: :identifier, line: 6, lexeme: "i"},
+                   {:binary, {:variable, %Token{type: :identifier, line: 6, lexeme: "i"}},
                     %Token{type: :plus, line: 6, lexeme: "+"},
-                    {:literal_expr, %Token{type: :number, line: 6, lexeme: "1", literal: 1.0}}}},
+                    {:literal, %Token{type: :number, line: 6, lexeme: "1", literal: 1.0}}}},
                   1}
                ]
              } = resolve(src)
@@ -517,13 +517,13 @@ defmodule Ilox.ResolverTest do
 
       assert %{
                locals: [
-                 {{:var_expr, %Token{type: :identifier, line: 5, lexeme: "i"}}, 2},
-                 {{:var_expr, %Token{type: :identifier, line: 6, lexeme: "i"}}, 2},
-                 {{:var_expr, %Token{type: :identifier, line: 9, lexeme: "count"}}, 0},
-                 {{:assign_expr, %Token{type: :identifier, line: 5, lexeme: "i"},
-                   {:binary_expr, {:var_expr, %Token{type: :identifier, line: 5, lexeme: "i"}},
+                 {{:variable, %Token{type: :identifier, line: 5, lexeme: "i"}}, 2},
+                 {{:variable, %Token{type: :identifier, line: 6, lexeme: "i"}}, 2},
+                 {{:variable, %Token{type: :identifier, line: 9, lexeme: "count"}}, 0},
+                 {{:assignment, %Token{type: :identifier, line: 5, lexeme: "i"},
+                   {:binary, {:variable, %Token{type: :identifier, line: 5, lexeme: "i"}},
                     %Token{type: :plus, line: 5, lexeme: "+"},
-                    {:literal_expr, %Token{type: :number, line: 5, lexeme: "1", literal: 1.0}}}},
+                    {:literal, %Token{type: :number, line: 5, lexeme: "1", literal: 1.0}}}},
                   2}
                ]
              } = resolve(src)
@@ -546,8 +546,8 @@ defmodule Ilox.ResolverTest do
 
       assert %{
                locals: [
-                 {{:var_expr, %Token{type: :identifier, line: 8, lexeme: "showA"}}, 0},
-                 {{:var_expr, %Token{type: :identifier, line: 10, lexeme: "showA"}}, 0}
+                 {{:variable, %Token{type: :identifier, line: 8, lexeme: "showA"}}, 0},
+                 {{:variable, %Token{type: :identifier, line: 10, lexeme: "showA"}}, 0}
                ]
              } = resolve(src)
     end
