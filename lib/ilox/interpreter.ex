@@ -4,13 +4,14 @@ defmodule Ilox.Interpreter do
   """
 
   alias Ilox.Callable
+  alias Ilox.Class
   alias Ilox.Env
   alias Ilox.Errors
+  alias Ilox.Function
+  alias Ilox.Instance
   alias Ilox.Parser
   alias Ilox.Resolver
   alias Ilox.Token
-
-  import Ilox.Guards
 
   @doc """
   Runs an ilox script.
@@ -69,7 +70,7 @@ defmodule Ilox.Interpreter do
       |> create_env()
       |> eval_expression(expr)
 
-    {:ok, inspect_expression_value(value)}
+    {:ok, inspect_expression_value(env, value)}
   rescue
     e in Ilox.RuntimeError ->
       {:error, :runtime, Exception.message(e)}
@@ -115,7 +116,7 @@ defmodule Ilox.Interpreter do
 
   defp exec_statement(env, {:print_stmt, expr}) do
     {env, value} = eval_expression(env, expr)
-    env.print.(stringify_expression_value(value))
+    env.print.(stringify_expression_value(env, value))
     env
   end
 
@@ -155,14 +156,37 @@ defmodule Ilox.Interpreter do
 
   defp exec_statement(env, {:fun_decl, name, _params, arity, _body} = fun) do
     fun =
-      Callable.new(
+      Function.new(
+        name: name.lexeme,
         arity: arity,
         decl: fun,
-        to_string: "<fn #{name.lexeme}>",
         closure_id: Env.current_scope(env)
       )
 
     {env, _} = Env.define(env, name, fun)
+    env
+  end
+
+  defp exec_statement(env, {:class_decl, name, methods}) do
+    methods =
+      methods
+      |> Enum.map(fn {:fun_decl, name, _params, arity, _body} = fun ->
+        {
+          name.lexeme,
+          Function.new(
+            name: name.lexeme,
+            arity: arity,
+            decl: fun,
+            closure_id: Env.current_scope(env),
+            init: name == "init"
+          )
+        }
+      end)
+      |> Map.new()
+
+    class = Class.new(name: name.lexeme, methods: methods)
+
+    {env, _} = Env.define(env, name, class)
     env
   end
 
@@ -213,11 +237,21 @@ defmodule Ilox.Interpreter do
     {env, eval_operator(operator, left, right, types)}
   end
 
-  defp eval_expression(env, {:variable, name} = expr), do: {env, Env.get(env, expr, name)}
+  defp eval_expression(env, {type, name} = expr) when type in [:variable, :this],
+    do: {env, Env.get(env, expr, name)}
 
   defp eval_expression(env, {:assignment, name, value}) do
     {env, value} = eval_expression(env, value)
     Env.assign(env, name, value)
+  end
+
+  defp eval_expression(env, {:set, object, name, value}) do
+    {env, value} = eval_expression(env, value)
+
+    case eval_expression(env, object) do
+      {env, {Instance, _id} = ref} -> Instance.set(ref, env, name, value)
+      _ -> raise Ilox.RuntimeError, token: name, message: "Only instances have fields."
+    end
   end
 
   defp eval_expression(env, {:logical, left, %Token{type: operator}, right})
@@ -232,14 +266,14 @@ defmodule Ilox.Interpreter do
     end
   end
 
-  defp eval_expression(env, {:fcall, callee, arguments, argc, closing}) do
+  defp eval_expression(env, {:call, callee, arguments, argc, closing}) do
     {env, callee} = eval_expression(env, callee)
 
-    if !is_callable(callee) do
+    if !Callable.impl_for(callee) do
       raise Ilox.RuntimeError, token: closing, message: "Can only call functions and classes."
     end
 
-    if callee.arity != argc do
+    if Callable.arity(callee) != argc do
       raise Ilox.RuntimeError,
         token: closing,
         message: "Expected #{callee.arity} arguments but got #{argc}."
@@ -251,7 +285,15 @@ defmodule Ilox.Interpreter do
         {env, [arg | args]}
       end)
 
-    Callable.call(env, callee, Enum.reverse(arguments))
+    Callable.call(callee, env, Enum.reverse(arguments))
+  end
+
+  defp eval_expression(env, {:get, object, name}) do
+    case eval_expression(env, object) do
+      {env, {Instance, _id} = ref} -> Instance.get(ref, env, name)
+      {env, %Instance{id: id}} -> Instance.get({Instance, id}, env, name)
+      _ -> raise Ilox.RuntimeError, token: name, message: "Only instances have properties."
+    end
   end
 
   # Comparison operators *must* be restricted to numbers, because all values in the BEAM
@@ -287,17 +329,24 @@ defmodule Ilox.Interpreter do
   defp create_env(%Env{} = env), do: env
   defp create_env(nil), do: Env.new()
 
-  defp inspect_expression_value(nil), do: "nil"
-  defp inspect_expression_value(value) when is_binary(value), do: ~s("#{value}")
-  defp inspect_expression_value(value), do: stringify_expression_value(value)
+  defp inspect_expression_value(_env, nil), do: "nil"
+  defp inspect_expression_value(_env, value) when is_binary(value), do: ~s("#{value}")
 
-  defp stringify_expression_value(nil), do: ""
+  defp inspect_expression_value(env, {Instance, _id} = ref),
+    do: to_string(Env.get_instance(env, ref))
 
-  defp stringify_expression_value(value) when is_float(value) do
+  defp inspect_expression_value(env, value), do: stringify_expression_value(env, value)
+
+  defp stringify_expression_value(_env, nil), do: ""
+
+  defp stringify_expression_value(_env, value) when is_float(value) do
     value
     |> :erlang.float_to_binary([:short, :compact])
     |> String.replace_suffix(".0", "")
   end
 
-  defp stringify_expression_value(value), do: to_string(value)
+  defp stringify_expression_value(env, {Instance, _id} = ref),
+    do: to_string(Env.get_instance(env, ref))
+
+  defp stringify_expression_value(_env, value), do: to_string(value)
 end

@@ -402,7 +402,8 @@ defmodule Lox do
 
   expression  → assignment ;
 
-  assignment  → IDENTIFIER "=" assignment | logical ;
+  assignment  → ( call "." )? IDENTIFIER "=" assignment
+              | logical ;
 
   logical     → logicAnd ( "or" logicAnd )* ;
   logicAnd    → equality ( "and" equality )* ;
@@ -412,9 +413,10 @@ defmodule Lox do
   factor      → unary ( ( "/" | "*" ) unary )* ;
 
   unary       → ( ( "!" | "-" ) unary ) | call ;
-  call        → primary  ( "(" arguments? ")" )* ;
-  primary     → "true" | "false" | "nil"
-              | NUMBER | STRING | IDENTIFIER |  "(" expression ")" ;
+  call        → primary ( "(" arguments? ")" | "." IDENTIFIER )* ;
+  primary     → "true" | "false" | "nil" | "this"
+              | NUMBER | STRING | IDENTIFIER |  "(" expression ")"
+              | "super" "." IDENTIFIER ;
 
   function    → IDENTIFIER "(" parameters? ")" block ;
   parameters  → IDENTIFIER ( "," IDENTIFIER )* ;
@@ -441,7 +443,12 @@ defmodule Lox do
   @typedoc """
   A class, function, or variable declaration, or a statement.
   """
-  @type declaration :: fun_decl | var_decl | statement
+  @type declaration :: class_decl | fun_decl | var_decl | statement
+
+  @typedoc """
+  A class declaration.
+  """
+  @type class_decl :: {:class_decl, name :: Token.t(), methods :: list(fun_decl)}
 
   @typedoc """
   A function definition.
@@ -458,7 +465,7 @@ defmodule Lox do
   @typedoc """
   A variable declaration with an optional initialization expression.
   """
-  @type var_decl :: {:var_decl, identifier :: Token.t(), initializer :: Lox.expr() | nil}
+  @type var_decl :: {:var_decl, name :: Token.t(), initializer :: Lox.expr() | nil}
 
   @typedoc """
   Supported program statements. `for` statements are transformed into `while` blocks
@@ -515,7 +522,7 @@ defmodule Lox do
   # factor      → unary ( ( "/" | "*" ) unary )* ;
 
   # unary       → ( ( "!" | "-" ) unary ) | call ;
-  # call        → primary  ( "(" arguments? ")" )* ;
+  # call        → primary  ( "(" arguments? ")" | "." IDENTIFIER )* ;
   # primary     → "true" | "false" | "nil"
   #             | NUMBER | STRING | IDENTIFIER |  "(" expression ")" ;
 
@@ -527,12 +534,28 @@ defmodule Lox do
   @typedoc """
   Any expression that evaluates to a value.
   """
-  @type expr :: assignment | logical | binary_expr | unary | call | literal | group | variable
+  @type expr ::
+          assignment
+          | logical
+          | binary_expr
+          | unary
+          | call
+          | get
+          | literal
+          | set
+          | group
+          | this
+          | variable
 
   @typedoc """
   A variable assignment expression.
   """
-  @type assignment :: {:assignment, identifier :: Token.t(), value :: expr}
+  @type assignment :: {:assignment, name :: Token.t(), value :: expr}
+
+  @typedoc """
+  A field assignment expression.
+  """
+  @type set :: {:set, object :: expr, name :: Token.t(), value :: expr}
 
   @typedoc """
   Two expressions with a logical operator ("and", "or") between them.
@@ -557,8 +580,18 @@ defmodule Lox do
   function call.
   """
   @type call ::
-          {:fcall, callee :: Lox.expr(), arguments :: list(Lox.expr()), argc :: non_neg_integer(),
+          {:call, callee :: Lox.expr(), arguments :: list(Lox.expr()), argc :: non_neg_integer(),
            closing :: Token.t()}
+
+  @typedoc """
+  A property access expression.
+  """
+  @type get :: {:get, object :: Lox.expr(), name :: Token.t()}
+
+  @typedoc """
+  A reference to the current instance.
+  """
+  @type this :: {:this, keyword :: Token.t()}
 
   @typedoc """
   A literal value. One of `nil`, `true`, `false`, any floating point number, any integer,
@@ -570,5 +603,5 @@ defmodule Lox do
   @type group :: {:group, expr}
 
   @typedoc "A named reference to a variable."
-  @type variable :: {:variable, identifier :: Token.t()}
+  @type variable :: {:variable, name :: Token.t()}
 end

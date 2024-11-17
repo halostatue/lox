@@ -8,78 +8,22 @@ defmodule Ilox.Env do
   We will need to mark scopes as held by closures.
   """
 
-  alias Ilox.Callable
+  alias Ilox.Instance
+  alias Ilox.NativeFunction
+  alias Ilox.Scope
   alias Ilox.Token
-
-  defmodule Scope do
-    @moduledoc false
-
-    @typedoc "The identifier for the scope."
-    @type id :: String.t()
-
-    @typedoc "A variable name."
-    @type varname :: String.t()
-
-    @type t :: %__MODULE__{id: id, values: %{required(varname) => term()}, enclosing_id: nil | id}
-
-    @enforce_keys [:id]
-    defstruct [:id, values: %{}, enclosing_id: nil]
-
-    @spec new(id) :: t
-    def new(id) when is_binary(id), do: %__MODULE__{id: id}
-
-    @spec new(id, id) :: t
-    def new(id, enclosing_id) when is_binary(id) and is_binary(enclosing_id),
-      do: %__MODULE__{id: id, enclosing_id: enclosing_id}
-
-    @spec has_key?(t, varname) :: boolean()
-    def has_key?(scope, name), do: Map.has_key?(scope.values, name)
-
-    @spec put(t, varname, term()) :: t
-    def put(scope, name, value), do: %{scope | values: Map.put(scope.values, name, value)}
-
-    @spec get(t, varname) :: term()
-    def get(scope, name), do: Map.get(scope.values, name)
-
-    defimpl Inspect do
-      import Inspect.Algebra
-
-      def inspect(scope, opts) do
-        variables =
-          if scope.id == "<globals>" do
-            Map.drop(scope.values, ["clock", "env"])
-          else
-            scope.values
-          end
-          |> Map.keys()
-          |> to_doc(opts)
-
-        enclosing =
-          if is_nil(scope.enclosing_id) do
-            ""
-          else
-            concat([" enclosing: ", to_doc(scope.enclosing_id, opts)])
-          end
-
-        concat([
-          "#Scope<",
-          variables,
-          enclosing,
-          ">"
-        ])
-      end
-    end
-  end
+  alias Lox.Id
 
   @type t :: %__MODULE__{
           stack: list(Scope.id()),
           scopes: %{required(Scope.id()) => term()},
           locals: %{required(Lox.expr()) => non_neg_integer()},
+          instances: %{required(Instance.id()) => Instance.t()},
           print: (IO.chardata() | String.Chars.t() -> any())
         }
 
   @enforce_keys [:print]
-  defstruct [:print, locals: %{}, scopes: %{}, stack: []]
+  defstruct [:print, locals: %{}, scopes: %{}, stack: [], instances: %{}]
 
   @globals "<globals>"
 
@@ -90,8 +34,8 @@ defmodule Ilox.Env do
   def new(options \\ []) do
     globals =
       Scope.new(@globals)
-      |> Scope.put("clock", Callable.__clock())
-      |> Scope.put("env", Callable.__env())
+      |> Scope.put("clock", NativeFunction.__clock())
+      |> Scope.put("env", NativeFunction.__env())
 
     __push_scope(%__MODULE__{print: Keyword.get(options, :print, &IO.puts/1)}, globals)
   end
@@ -107,7 +51,7 @@ defmodule Ilox.Env do
   """
   @spec push_scope(t) :: {t, Scope.id()}
   def push_scope(%__MODULE__{} = env) do
-    new_scope_id = scope_id()
+    new_scope_id = Id.new()
     {__push_scope(env, new_scope_id), new_scope_id}
   end
 
@@ -120,7 +64,7 @@ defmodule Ilox.Env do
 
   @doc false
   @spec __push_scope(t) :: t
-  def __push_scope(env), do: __push_scope(env, scope_id())
+  def __push_scope(env), do: __push_scope(env, Id.new())
 
   @spec __push_scope(t, Scope.id() | Scope.t()) :: t
   def __push_scope(%__MODULE__{stack: [current_scope_id | _]} = env, new_scope_id)
@@ -217,7 +161,8 @@ defmodule Ilox.Env do
 
   @doc false
   @spec get(t, Token.t()) :: term()
-  def get(%__MODULE__{} = env, %Token{type: :identifier, lexeme: name} = id) do
+  def get(%__MODULE__{} = env, %Token{type: type, lexeme: name} = id)
+      when type in [:identifier, :this] do
     case find_defining_scope(env, name) do
       %Scope{} = scope -> Scope.get(scope, name)
       _ -> raise Ilox.RuntimeError, undefined_variable(id)
@@ -229,8 +174,8 @@ defmodule Ilox.Env do
   scope handling.
   """
   @spec get(t, Lox.expr(), Token.t()) :: term()
-  def get(%__MODULE__{} = env, expr, %Token{type: :identifier} = id),
-    do: do_get(env, id, Map.get(env.locals, expr))
+  def get(%__MODULE__{} = env, expr, %Token{type: type} = id) when type in [:identifier, :this],
+    do: __get(env, id, Map.get(env.locals, expr))
 
   @doc """
   Activate the specified scope with the provided id.
@@ -279,8 +224,40 @@ defmodule Ilox.Env do
     |> Enum.find(&Scope.has_key?(&1, name))
   end
 
-  @consonants [?b, ?f, ?g, ?k, ?n, ?p, ?r, ?s, ?t, ?v, ?x, ?z]
-  @vowels [?a, ?e, ?i, ?o, ?u]
+  @doc false
+  @spec get_instance(t, Instance.t() | {Instance, Instance.id()}) :: Instance.t()
+  def get_instance(%__MODULE__{} = env, %Instance{id: id}),
+    do: get_instance(env, {Instance, id})
+
+  def get_instance(%__MODULE__{instances: instances}, {Instance, id}),
+    do: Map.fetch!(instances, id)
+
+  @doc false
+  @spec put_instance(t, Instance.t()) :: t
+  def put_instance(%__MODULE__{instances: instances} = env, %Instance{id: id} = instance),
+    do: %{env | instances: Map.put(instances, id, instance)}
+
+  @doc false
+  @spec put_scope(t, Scope.t()) :: t
+  def put_scope(%__MODULE__{} = env, %Scope{} = scope),
+    do: %{env | scopes: Map.put(env.scopes, scope.id, scope)}
+
+  @doc false
+  @spec __get(t, Token.t(), non_neg_integer() | nil) :: term()
+  def __get(%{scopes: %{@globals => globals}}, %Token{lexeme: name} = id, nil) do
+    if Scope.has_key?(globals, name) do
+      Scope.get(globals, name)
+    else
+      raise Ilox.RuntimeError, undefined_variable(id)
+    end
+  end
+
+  def __get(env, %Token{lexeme: name} = id, distance) do
+    case List.pop_at(scope_chain(env), distance) do
+      {nil, _scopes} -> raise Ilox.RuntimeError, undefined_variable(id)
+      {scope, _scopes} -> Scope.get(scope, name)
+    end
+  end
 
   @spec scope_chain(t) :: Enumerable.t(Scope.t())
   defp scope_chain(%__MODULE__{stack: [current | _], scopes: scopes}) do
@@ -292,13 +269,6 @@ defmodule Ilox.Env do
     |> Enum.to_list()
   end
 
-  @spec scope_id :: Scope.id()
-  defp scope_id,
-    do: "#{scope_id_part(3)}-#{scope_id_part(3)}-#{scope_id_part(3)}"
-
-  defp scope_id_part(size),
-    do: Enum.into(1..size, "", fn _ -> <<Enum.random(@consonants), Enum.random(@vowels)>> end)
-
   @spec undefined_variable(Token.t()) :: keyword()
   defp undefined_variable(%Token{} = name),
     do: [token: name, message: "Undefined variable '#{name.lexeme}'."]
@@ -308,28 +278,18 @@ defmodule Ilox.Env do
     do: assign_value(env, scopes[current], name, value)
 
   @spec assign_value(t, Scope.t(), Scope.varname(), term()) :: t
+  defp assign_value(env, scope, name, %Instance{id: id} = instance) do
+    env
+    |> put_instance(instance)
+    |> assign_value(scope, name, {Instance, id})
+  end
+
   defp assign_value(env, scope, name, value) do
     %{env | scopes: %{env.scopes | scope.id => Scope.put(scope, name, value)}}
   end
 
-  @spec do_get(t, Token.t(), non_neg_integer() | nil) :: term()
-  defp do_get(%{scopes: %{@globals => globals}}, %Token{lexeme: name} = id, nil) do
-    if Scope.has_key?(globals, name) do
-      Scope.get(globals, name)
-    else
-      raise Ilox.RuntimeError, undefined_variable(id)
-    end
-  end
-
-  defp do_get(env, %Token{lexeme: name} = id, distance) do
-    case List.pop_at(scope_chain(env), distance) do
-      {nil, _scopes} -> raise Ilox.RuntimeError, undefined_variable(id)
-      {scope, _scopes} -> Scope.get(scope, name)
-    end
-  end
-
   @spec do_assign(t, Token.t(), term(), non_neg_integer() | nil) :: t
-  def do_assign(%{scopes: %{@globals => globals}} = env, %Token{lexeme: name} = id, value, nil) do
+  defp do_assign(%{scopes: %{@globals => globals}} = env, %Token{lexeme: name} = id, value, nil) do
     if Scope.has_key?(globals, name) do
       assign_value(env, globals, name, value)
     else
@@ -337,7 +297,7 @@ defmodule Ilox.Env do
     end
   end
 
-  def do_assign(env, %Token{lexeme: name} = id, value, distance) do
+  defp do_assign(env, %Token{lexeme: name} = id, value, distance) do
     case List.pop_at(scope_chain(env), distance) do
       {nil, _scopes} -> raise Ilox.RuntimeError, undefined_variable(id)
       {scope, _scopes} -> assign_value(env, scope, name, value)

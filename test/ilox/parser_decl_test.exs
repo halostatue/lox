@@ -39,7 +39,7 @@ defmodule Ilox.ParserDeclTest do
                 {:fun_decl, %Token{lexeme: "one"}, [], 0,
                  {:block, [{:print_stmt, {:literal, %Token{literal: 1.0}}}]}},
                 {:expr_stmt,
-                 {:fcall, {:variable, %Token{lexeme: "one"}}, [], 0, %Token{type: :right_paren}}}
+                 {:call, {:variable, %Token{lexeme: "one"}}, [], 0, %Token{type: :right_paren}}}
               ]} = Parser.parse("fun one() { print 1; } one();")
     end
 
@@ -57,7 +57,7 @@ defmodule Ilox.ParserDeclTest do
                       {:variable, %Token{lexeme: "c"}}}}
                   ]}},
                 {:expr_stmt,
-                 {:fcall, {:variable, %Token{lexeme: "add"}},
+                 {:call, {:variable, %Token{lexeme: "add"}},
                   [
                     {:literal, %Token{literal: 1.0}},
                     {:literal, %Token{literal: 2.0}},
@@ -80,7 +80,7 @@ defmodule Ilox.ParserDeclTest do
                       {:variable, %Token{lexeme: "c"}}}}
                   ]}},
                 {:print_stmt,
-                 {:fcall, {:variable, %Token{lexeme: "add"}},
+                 {:call, {:variable, %Token{lexeme: "add"}},
                   [
                     {:literal, %Token{literal: 1.0}},
                     {:literal, %Token{literal: 2.0}},
@@ -133,22 +133,22 @@ defmodule Ilox.ParserDeclTest do
                       ]}}
                   ]}},
                 {:var_decl, %Token{lexeme: "counter1"},
-                 {:fcall, {:variable, %Token{lexeme: "makeCounter"}}, [], 0,
+                 {:call, {:variable, %Token{lexeme: "makeCounter"}}, [], 0,
                   %Token{type: :right_paren}}},
                 {:var_decl, %Token{lexeme: "counter2"},
-                 {:fcall, {:variable, %Token{lexeme: "makeCounter"}}, [], 0,
+                 {:call, {:variable, %Token{lexeme: "makeCounter"}}, [], 0,
                   %Token{type: :right_paren}}},
                 {:expr_stmt,
-                 {:fcall, {:variable, %Token{lexeme: "counter1"}}, [], 0,
+                 {:call, {:variable, %Token{lexeme: "counter1"}}, [], 0,
                   %Token{type: :right_paren}}},
                 {:expr_stmt,
-                 {:fcall, {:variable, %Token{lexeme: "counter2"}}, [], 0,
+                 {:call, {:variable, %Token{lexeme: "counter2"}}, [], 0,
                   %Token{type: :right_paren}}},
                 {:expr_stmt,
-                 {:fcall, {:variable, %Token{lexeme: "counter1"}}, [], 0,
+                 {:call, {:variable, %Token{lexeme: "counter1"}}, [], 0,
                   %Token{type: :right_paren}}},
                 {:expr_stmt,
-                 {:fcall, {:variable, %Token{lexeme: "counter2"}}, [], 0,
+                 {:call, {:variable, %Token{lexeme: "counter2"}}, [], 0,
                   %Token{type: :right_paren}}}
               ]} = Parser.parse(src)
     end

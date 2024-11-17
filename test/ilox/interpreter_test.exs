@@ -5,7 +5,7 @@ defmodule Ilox.InterpreterTest do
   import Ilox.StreamData
   import Ilox.SourceTools, only: [run: 1, run: 2]
 
-  @moduletag :focus
+  # @moduletag :focus
 
   describe "run/2: expression statements" do
     property "value == value;" do
@@ -290,7 +290,7 @@ defmodule Ilox.InterpreterTest do
 
   describe "run/2: function calls" do
     test "print clock;" do
-      assert {:ok, output: ["<native fn>"]} = run("print clock;")
+      assert {:ok, output: ["<native fun: clock/0>"]} = run("print clock;")
     end
 
     test "print clock();" do
@@ -304,7 +304,7 @@ defmodule Ilox.InterpreterTest do
     end
 
     test "fun add(a, b, c) { print a + b + c; } print add;" do
-      assert {:ok, output: ["<fn add>"]} =
+      assert {:ok, output: ["<fun add/3>"]} =
                run("fun add(a, b, c) { print a + b + c; } print add;")
     end
 

@@ -318,8 +318,7 @@ defmodule Ilox.ResolverTest do
                  {{:assignment, %Token{type: :identifier, line: 1, lexeme: "a"},
                    {:binary, {:variable, %Token{type: :identifier, line: 1, lexeme: "a"}},
                     %Token{type: :minus, line: 1, lexeme: "-"},
-                    {:literal, %Token{type: :number, line: 1, lexeme: "1", literal: 1.0}}}},
-                  1}
+                    {:literal, %Token{type: :number, line: 1, lexeme: "1", literal: 1.0}}}}, 1}
                ]
              } =
                resolve("""
@@ -337,8 +336,7 @@ defmodule Ilox.ResolverTest do
                  {{:assignment, %Token{type: :identifier, line: 1, lexeme: "a"},
                    {:binary, {:variable, %Token{type: :identifier, line: 1, lexeme: "a"}},
                     %Token{type: :minus, line: 1, lexeme: "-"},
-                    {:literal, %Token{type: :number, line: 1, lexeme: "1", literal: 1.0}}}},
-                  1}
+                    {:literal, %Token{type: :number, line: 1, lexeme: "1", literal: 1.0}}}}, 1}
                ]
              } =
                resolve("""
@@ -485,8 +483,7 @@ defmodule Ilox.ResolverTest do
                  {{:assignment, %Token{type: :identifier, line: 6, lexeme: "i"},
                    {:binary, {:variable, %Token{type: :identifier, line: 6, lexeme: "i"}},
                     %Token{type: :plus, line: 6, lexeme: "+"},
-                    {:literal, %Token{type: :number, line: 6, lexeme: "1", literal: 1.0}}}},
-                  1}
+                    {:literal, %Token{type: :number, line: 6, lexeme: "1", literal: 1.0}}}}, 1}
                ]
              } = resolve(src)
     end
@@ -523,8 +520,7 @@ defmodule Ilox.ResolverTest do
                  {{:assignment, %Token{type: :identifier, line: 5, lexeme: "i"},
                    {:binary, {:variable, %Token{type: :identifier, line: 5, lexeme: "i"}},
                     %Token{type: :plus, line: 5, lexeme: "+"},
-                    {:literal, %Token{type: :number, line: 5, lexeme: "1", literal: 1.0}}}},
-                  2}
+                    {:literal, %Token{type: :number, line: 5, lexeme: "1", literal: 1.0}}}}, 2}
                ]
              } = resolve(src)
     end
@@ -608,6 +604,23 @@ defmodule Ilox.ResolverTest do
               [
                 [token: %Token{type: :return}, message: "Can't return from top-level code."]
               ]} = resolve("{ return; }")
+    end
+
+    test "return value from initializer" do
+      assert {:error, :resolver,
+              [
+                [
+                  token: %Token{type: :return},
+                  message: "Can't return a value from an initializer."
+                ]
+              ]} =
+               resolve("""
+               class Foo {
+                 init() {
+                   return "invalid";
+                 }
+               }
+               """)
     end
   end
 end

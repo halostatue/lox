@@ -10,22 +10,29 @@ defmodule Ilox.Resolver do
     @moduledoc false
 
     @type t :: %__MODULE__{
-            function_type: :none | :function,
+            class_type: :none | :class,
             errors: list(keyword()),
+            function_type: :none | :function | :initializer | :method,
             locals: %{required(tuple()) => non_neg_integer()},
             scopes: list(%{required(String.t()) => boolean()}),
             test_mode: boolean()
           }
 
-    defstruct test_mode: false, locals: %{}, errors: [], scopes: [], function_type: :none
+    defstruct class_type: :none,
+              errors: [],
+              function_type: :none,
+              locals: %{},
+              scopes: [],
+              test_mode: false
 
     def new(fields \\ []), do: struct!(__MODULE__, fields)
 
     def finish(%__MODULE__{errors: [_ | _] = errors}),
       do: {:error, :resolver, Enum.reverse(errors)}
 
-    def finish(%__MODULE__{test_mode: true} = ctx),
-      do: Map.drop(Map.from_struct(ctx), [:test_mode, :scopes, :errors, :function_type])
+    def finish(%__MODULE__{test_mode: true} = ctx) do
+      Map.drop(Map.from_struct(ctx), [:test_mode, :scopes, :errors, :function_type, :class_type])
+    end
 
     def finish(%__MODULE__{locals: locals}), do: {:ok, locals}
 
@@ -51,6 +58,9 @@ defmodule Ilox.Resolver do
 
     def define(%__MODULE__{scopes: [scope | scopes]} = ctx, name),
       do: %{ctx | scopes: [Map.put(scope, name.lexeme, true) | scopes]}
+
+    def __define(%__MODULE__{scopes: [scope | scopes]} = ctx, name),
+      do: %{ctx | scopes: [Map.put(scope, name, true) | scopes]}
 
     def maybe_error(%__MODULE__{} = ctx, true, token, message),
       do: %{ctx | errors: [[token: token, message: message] | ctx.errors]}
@@ -101,6 +111,11 @@ defmodule Ilox.Resolver do
   defp resolve_statement(ctx, {:return_stmt, token, expr}) do
     ctx
     |> Ctx.maybe_error(ctx.function_type == :none, token, "Can't return from top-level code.")
+    |> Ctx.maybe_error(
+      ctx.function_type == :initializer && expr != nil,
+      token,
+      "Can't return a value from an initializer."
+    )
     |> resolve_expression(expr)
   end
 
@@ -124,6 +139,21 @@ defmodule Ilox.Resolver do
     |> resolve_function(fun, :function)
   end
 
+  defp resolve_statement(ctx, {:class_decl, name, methods}) do
+    enclosing_class = ctx.class_type
+
+    ctx =
+      %{ctx | class_type: :class}
+      |> Ctx.declare(name)
+      |> Ctx.define(name)
+      |> Ctx.push()
+      |> Ctx.__define("this")
+      |> resolve_methods(methods)
+      |> Ctx.pop()
+
+    %{ctx | class_type: enclosing_class}
+  end
+
   @spec resolve_expressions(Ctx.t(), list(nil | tuple())) :: Ctx.t()
   defp resolve_expressions(ctx, exprs) when is_list(exprs) do
     Enum.reduce(exprs, ctx, &resolve_expression(&2, &1))
@@ -140,13 +170,20 @@ defmodule Ilox.Resolver do
     |> resolve_expression(right)
   end
 
-  defp resolve_expression(ctx, {:fcall, callee, arguments, _argc, _closing}) do
+  defp resolve_expression(ctx, {:call, callee, arguments, _argc, _closing}) do
     ctx
     |> resolve_expression(callee)
     |> resolve_expressions(arguments)
   end
 
+  defp resolve_expression(ctx, {:get, object, _name}), do: resolve_expression(ctx, object)
+
   defp resolve_expression(ctx, {:literal, _}), do: ctx
+
+  defp resolve_expression(%{class_type: :none} = ctx, {:this, keyword}),
+    do: Ctx.maybe_error(ctx, true, keyword, "Can't use 'this' outside of a class.")
+
+  defp resolve_expression(ctx, {:this, keyword} = expr), do: resolve_local(ctx, expr, keyword)
 
   defp resolve_expression(ctx, {:logical, left, _token, right}) do
     ctx
@@ -167,6 +204,12 @@ defmodule Ilox.Resolver do
     ctx
     |> resolve_expression(value)
     |> resolve_local(expr, name)
+  end
+
+  defp resolve_expression(ctx, {:set, object, _name, value}) do
+    ctx
+    |> resolve_expression(value)
+    |> resolve_expression(object)
   end
 
   @spec check_read_in_init(Ctx.t(), Token.t()) :: Ctx.t()
@@ -210,6 +253,15 @@ defmodule Ilox.Resolver do
       ctx
       |> Ctx.declare(param)
       |> Ctx.define(param)
+    end)
+  end
+
+  @spec resolve_methods(Ctx.t(), list(tuple())) :: Ctx.t()
+  defp resolve_methods(ctx, methods) do
+    Enum.reduce(methods, ctx, fn {:fun_decl, %Token{lexeme: name}, _params, _arity, _body} =
+                                   method,
+                                 ctx ->
+      resolve_function(ctx, method, if(name == "init", do: :initializer, else: :method))
     end)
   end
 end

@@ -1,9 +1,9 @@
 defmodule Ilox.EnvTest do
   use ExUnit.Case, async: true
 
-  alias Ilox.Callable
   alias Ilox.Env
-  alias Ilox.Env.Scope
+  alias Ilox.NativeFunction
+  alias Ilox.Scope
   alias Ilox.Token
 
   @globals "<globals>"
@@ -18,7 +18,8 @@ defmodule Ilox.EnvTest do
                scopes: %{
                  @globals => %Scope{
                    values: %{
-                     "clock" => %Callable{}
+                     "clock" => %NativeFunction{},
+                     "env" => %NativeFunction{}
                    }
                  }
                },

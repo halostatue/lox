@@ -261,15 +261,15 @@ defmodule Ilox.ParserExprTest do
 
   describe "parse_expr/1: function calls" do
     test "fn()" do
-      assert {:ok, {:fcall, {:variable, %Token{lexeme: "fn"}}, [], 0, %Token{type: :right_paren}}} =
+      assert {:ok, {:call, {:variable, %Token{lexeme: "fn"}}, [], 0, %Token{type: :right_paren}}} =
                Parser.parse_expr("fn()")
     end
 
     test "fn()()()" do
       assert {:ok,
-              {:fcall,
-               {:fcall,
-                {:fcall, {:variable, %Token{lexeme: "fn"}}, [], 0, %Token{type: :right_paren}}, [],
+              {:call,
+               {:call,
+                {:call, {:variable, %Token{lexeme: "fn"}}, [], 0, %Token{type: :right_paren}}, [],
                 0, %Token{type: :right_paren}}, [], 0,
                %Token{type: :right_paren}}} =
                Parser.parse_expr("fn()()()")
@@ -280,9 +280,9 @@ defmodule Ilox.ParserExprTest do
       # This should not be passing because there's an extra closing parenthesis that
       # should halt parsing.
       assert {:ok,
-              {:fcall,
-               {:fcall,
-                {:fcall, {:variable, %Token{lexeme: "fn"}}, [], 0, %Token{type: :right_paren}}, [],
+              {:call,
+               {:call,
+                {:call, {:variable, %Token{lexeme: "fn"}}, [], 0, %Token{type: :right_paren}}, [],
                 %Token{type: :right_paren}}, [],
                %Token{type: :right_paren}}} =
                Parser.parse_expr("fn()())()")
@@ -290,7 +290,7 @@ defmodule Ilox.ParserExprTest do
 
     test "fn(1)" do
       assert {:ok,
-              {:fcall, {:variable, %Token{lexeme: "fn"}}, [{:literal, %Token{literal: 1.0}}],
+              {:call, {:variable, %Token{lexeme: "fn"}}, [{:literal, %Token{literal: 1.0}}],
                1,
                %Token{type: :right_paren}}} =
                Parser.parse_expr("fn(1)")
@@ -298,7 +298,7 @@ defmodule Ilox.ParserExprTest do
 
     test "fn(1, 2, 3)" do
       assert {:ok,
-              {:fcall, {:variable, %Token{lexeme: "fn"}},
+              {:call, {:variable, %Token{lexeme: "fn"}},
                [
                  {:literal, %Token{literal: 1.0}},
                  {:literal, %Token{literal: 2.0}},
@@ -320,7 +320,7 @@ defmodule Ilox.ParserExprTest do
       # parser is likely to have some issues. For now, we are leaving it as a successful
       # parse.
       assert {:ok,
-              {:fcall, {:variable, %Token{lexeme: "fn"}}, [{:literal, %Token{literal: 1.0}}],
+              {:call, {:variable, %Token{lexeme: "fn"}}, [{:literal, %Token{literal: 1.0}}],
                1,
                %Token{type: :right_paren}}} =
                Parser.parse_expr("fn(1,)")
