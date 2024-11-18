@@ -167,7 +167,30 @@ defmodule Ilox.Interpreter do
     env
   end
 
-  defp exec_statement(env, {:class_decl, name, methods}) do
+  defp exec_statement(env, {:class_decl, name, superclass, methods}) do
+    {env, superclass} =
+      case superclass do
+        {:variable, scname} ->
+          case eval_expression(env, superclass) do
+            {env, %Class{} = superclass} -> {env, superclass}
+            _ -> raise Ilox.RuntimeError, token: scname, message: "Superclass must be a class."
+          end
+
+        nil ->
+          {env, nil}
+      end
+
+    {env, _} = Env.define(env, name, nil)
+
+    {env, superclass_scope_id} =
+      if superclass do
+        {env, scope_id} = Env.push_scope(env)
+        env = Env.__define(env, "super", superclass)
+        {env, scope_id}
+      else
+        {env, nil}
+      end
+
     methods =
       methods
       |> Enum.map(fn {:fun_decl, name, _params, arity, _body} = fun ->
@@ -184,9 +207,11 @@ defmodule Ilox.Interpreter do
       end)
       |> Map.new()
 
-    class = Class.new(name: name.lexeme, methods: methods)
+    class = Class.new(name: name.lexeme, methods: methods, superclass: superclass)
 
-    {env, _} = Env.define(env, name, class)
+    env = if superclass_scope_id, do: Env.pop_scope(env, superclass_scope_id), else: env
+
+    {env, _} = Env.assign(env, name, class)
     env
   end
 
@@ -239,6 +264,23 @@ defmodule Ilox.Interpreter do
 
   defp eval_expression(env, {type, name} = expr) when type in [:variable, :this],
     do: {env, Env.get(env, expr, name)}
+
+  defp eval_expression(env, {:super, keyword, name} = expr) do
+    distance = Env.__distance(env, expr)
+    superclass = Env.__get(env, keyword, distance)
+
+    instance =
+      Env.__get(env, %{keyword | lexeme: "this"}, distance - 1)
+      |> IO.inspect()
+
+    case Class.method(superclass, name.lexeme) do
+      {:ok, method} ->
+        Function.bind(method, instance, env)
+
+      :error ->
+        raise Ilox.RuntimeError, token: name, message: "Undefined property '#{name.lexeme}'."
+    end
+  end
 
   defp eval_expression(env, {:assignment, name, value}) do
     {env, value} = eval_expression(env, value)

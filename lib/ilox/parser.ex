@@ -102,11 +102,20 @@ defmodule Ilox.Parser do
   end
 
   defp parse_declaration(:class, ctx) do
-    {name, ctx} = expect_identifier(ctx, "class")
+    {name, %{tokens: [current | tokens]} = ctx} = expect_identifier(ctx, "class")
+
+    {superclass, ctx} =
+      if type_match(current, :less) do
+        {name, ctx} = expect_identifier(%{ctx | tokens: tokens}, "superclass")
+        {{:variable, name}, ctx}
+      else
+        {nil, ctx}
+      end
+
     {_, ctx} = expect(ctx, :left_brace, "Expect '{' before class body.")
     {methods, ctx} = parse_class_methods(ctx, [])
     {_, ctx} = expect(ctx, :right_brace, "Expect '}' after class body.")
-    add_statement(ctx, {:class_decl, name, methods})
+    add_statement(ctx, {:class_decl, name, superclass, methods})
   end
 
   defp parse_declaration(:fun, ctx), do: parse_function_declaration(ctx, "function")
@@ -497,6 +506,12 @@ defmodule Ilox.Parser do
     {expr, ctx} = parse_expression(%{ctx | tokens: tokens})
     {_, ctx} = expect_right_paren(ctx, "expr")
     {{:group, expr}, ctx}
+  end
+
+  defp parse_primary(%{tokens: [%Token{type: :super} = keyword | tokens]} = ctx) do
+    {_, ctx} = expect(%{ctx | tokens: tokens}, :dot, "Expect '.' after 'super'.")
+    {method, ctx} = expect_identifier(ctx, "superclass method")
+    {{:super, keyword, method}, ctx}
   end
 
   defp parse_primary(%{tokens: [current | _]} = ctx) do

@@ -6,17 +6,24 @@ defmodule Ilox.Class do
 
   @type t :: %__MODULE__{
           name: String.t(),
+          superclass: nil | t(),
           methods: %{required(String.t()) => Function.t()}
         }
 
   @enforce_keys [:name, :methods]
-  defstruct [:name, :methods]
+  defstruct [:name, :methods, superclass: nil]
 
   def new(opts \\ []), do: struct!(__MODULE__, opts)
 
   # This will eventually search in superclasses as well
   @spec method(t, String.t()) :: {:ok, Function.t()} | :error
-  def method(%__MODULE__{methods: methods}, name), do: Map.fetch(methods, name)
+  def method(%__MODULE__{methods: methods, superclass: superclass}, name) do
+    case Map.fetch(methods, name) do
+      :error when is_nil(superclass) -> :error
+      :error -> method(superclass, name)
+      {:ok, method} -> {:ok, method}
+    end
+  end
 
   @doc false
   def __call(%__MODULE__{} = class, %Env{} = env, args) do

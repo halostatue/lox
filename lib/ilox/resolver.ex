@@ -139,17 +139,20 @@ defmodule Ilox.Resolver do
     |> resolve_function(fun, :function)
   end
 
-  defp resolve_statement(ctx, {:class_decl, name, methods}) do
+  defp resolve_statement(ctx, {:class_decl, name, superclass, methods}) do
     enclosing_class = ctx.class_type
 
     ctx =
       %{ctx | class_type: :class}
       |> Ctx.declare(name)
       |> Ctx.define(name)
+      |> resolve_superclass(name, superclass)
       |> Ctx.push()
       |> Ctx.__define("this")
       |> resolve_methods(methods)
       |> Ctx.pop()
+
+    ctx = if superclass, do: Ctx.pop(ctx), else: ctx
 
     %{ctx | class_type: enclosing_class}
   end
@@ -184,6 +187,12 @@ defmodule Ilox.Resolver do
     do: Ctx.maybe_error(ctx, true, keyword, "Can't use 'this' outside of a class.")
 
   defp resolve_expression(ctx, {:this, keyword} = expr), do: resolve_local(ctx, expr, keyword)
+
+  defp resolve_expression(%{class_type: :none} = ctx, {:super, keyword, _method}),
+    do: Ctx.maybe_error(ctx, true, keyword, "Can't use 'super' outside of a class.")
+
+  defp resolve_expression(ctx, {:super, keyword, _method} = expr),
+    do: resolve_local(ctx, expr, keyword)
 
   defp resolve_expression(ctx, {:logical, left, _token, right}) do
     ctx
@@ -263,5 +272,19 @@ defmodule Ilox.Resolver do
                                  ctx ->
       resolve_function(ctx, method, if(name == "init", do: :initializer, else: :method))
     end)
+  end
+
+  defp resolve_superclass(ctx, _name, nil), do: ctx
+
+  defp resolve_superclass(ctx, name, {:variable, superclass} = expr) do
+    ctx
+    |> Ctx.maybe_error(
+      name.lexeme == superclass.lexeme,
+      superclass,
+      "A class can't inherit from itself."
+    )
+    |> resolve_expression(expr)
+    |> Ctx.push()
+    |> Ctx.__define("super")
   end
 end

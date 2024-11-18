@@ -594,6 +594,11 @@ defmodule Lox do
   @type this :: {:this, keyword :: Token.t()}
 
   @typedoc """
+  A method lookup for the superclass instance.
+  """
+  @type super :: {:super, keyword :: Token.t(), method :: Token.t()}
+
+  @typedoc """
   A literal value. One of `nil`, `true`, `false`, any floating point number, any integer,
   or any UTF-8 string.
   """

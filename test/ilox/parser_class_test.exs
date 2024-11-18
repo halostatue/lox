@@ -10,7 +10,7 @@ defmodule Ilox.ParserClassTest do
     test "declare" do
       assert {:ok,
               [
-                {:class_decl, %Token{type: :identifier, lexeme: "DevonshireCream"},
+                {:class_decl, %Token{type: :identifier, lexeme: "DevonshireCream"}, nil,
                  [
                    {:fun_decl, %Token{type: :identifier, lexeme: "eat"}, [], 0,
                     {:block, [{:print_stmt, {:literal, %Token{literal: "Yum!"}}}]}}
@@ -28,7 +28,7 @@ defmodule Ilox.ParserClassTest do
     test "print class" do
       assert {:ok,
               [
-                {:class_decl, %Token{type: :identifier, lexeme: "DevonshireCream"}, []},
+                {:class_decl, %Token{type: :identifier, lexeme: "DevonshireCream"}, nil, []},
                 {:print_stmt, {:variable, %Token{type: :identifier, lexeme: "DevonshireCream"}}}
               ]} =
                Parser.parse("""
@@ -40,7 +40,7 @@ defmodule Ilox.ParserClassTest do
     test "test basic class" do
       assert {:ok,
               [
-                {:class_decl, %Token{type: :identifier, lexeme: "DevonshireCream"}, []},
+                {:class_decl, %Token{type: :identifier, lexeme: "DevonshireCream"}, nil, []},
                 {:var_decl, %Token{type: :identifier, lexeme: "cream"},
                  {:call, {:variable, %Token{type: :identifier, lexeme: "DevonshireCream"}}, [], 0,
                   %Token{type: :right_paren}}},
@@ -56,7 +56,7 @@ defmodule Ilox.ParserClassTest do
     test "test basic class properties" do
       assert {:ok,
               [
-                {:class_decl, %Token{type: :identifier, lexeme: "DevonshireCream"}, []},
+                {:class_decl, %Token{type: :identifier, lexeme: "DevonshireCream"}, nil, []},
                 {:var_decl, %Token{type: :identifier, lexeme: "cream"},
                  {:call, {:variable, %Token{type: :identifier, lexeme: "DevonshireCream"}}, [], 0,
                   %Token{type: :right_paren}}},
@@ -79,7 +79,7 @@ defmodule Ilox.ParserClassTest do
     test "test basic class methods" do
       assert {:ok,
               [
-                {:class_decl, %Token{type: :identifier, lexeme: "DevonshireCream"},
+                {:class_decl, %Token{type: :identifier, lexeme: "DevonshireCream"}, nil,
                  [
                    {:fun_decl, %Token{type: :identifier, lexeme: "eat"}, [], 0,
                     {:block,
@@ -110,7 +110,7 @@ defmodule Ilox.ParserClassTest do
     test "test this reference" do
       assert {:ok,
               [
-                {:class_decl, %Token{type: :identifier, lexeme: "Egotist"},
+                {:class_decl, %Token{type: :identifier, lexeme: "Egotist"}, nil,
                  [
                    {:fun_decl, %Token{type: :identifier, lexeme: "speak"}, [], 0,
                     {:block,
@@ -141,7 +141,7 @@ defmodule Ilox.ParserClassTest do
     test "test this field reference" do
       assert {:ok,
               [
-                {:class_decl, %Token{type: :identifier, lexeme: "Cake"},
+                {:class_decl, %Token{type: :identifier, lexeme: "Cake"}, nil,
                  [
                    {:fun_decl, %Token{type: :identifier, lexeme: "taste"}, [], 0,
                     {
@@ -192,7 +192,7 @@ defmodule Ilox.ParserClassTest do
     test "test this callback" do
       assert {:ok,
               [
-                {:class_decl, %Token{type: :identifier, lexeme: "Thing"},
+                {:class_decl, %Token{type: :identifier, lexeme: "Thing"}, nil,
                  [
                    {:fun_decl, %Token{type: :identifier, lexeme: "getCallback"}, [], 0,
                     {:block,

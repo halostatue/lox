@@ -157,12 +157,12 @@ defmodule Ilox.Env do
   """
   @spec assign(t, Lox.expr(), Token.t(), term()) :: {t, term()}
   def assign(%__MODULE__{} = env, expr, %Token{type: :identifier} = id, value),
-    do: {do_assign(env, id, value, Map.get(env.locals, expr)), value}
+    do: {do_assign(env, id, value, __distance(env, expr)), value}
 
   @doc false
   @spec get(t, Token.t()) :: term()
   def get(%__MODULE__{} = env, %Token{type: type, lexeme: name} = id)
-      when type in [:identifier, :this] do
+      when type in [:identifier, :super, :this] do
     case find_defining_scope(env, name) do
       %Scope{} = scope -> Scope.get(scope, name)
       _ -> raise Ilox.RuntimeError, undefined_variable(id)
@@ -174,8 +174,9 @@ defmodule Ilox.Env do
   scope handling.
   """
   @spec get(t, Lox.expr(), Token.t()) :: term()
-  def get(%__MODULE__{} = env, expr, %Token{type: type} = id) when type in [:identifier, :this],
-    do: __get(env, id, Map.get(env.locals, expr))
+  def get(%__MODULE__{} = env, expr, %Token{type: type} = id)
+      when type in [:identifier, :super, :this],
+      do: __get(env, id, __distance(env, expr))
 
   @doc """
   Activate the specified scope with the provided id.
@@ -258,6 +259,10 @@ defmodule Ilox.Env do
       {scope, _scopes} -> Scope.get(scope, name)
     end
   end
+
+  @doc false
+  @spec __distance(t, Lox.expr()) :: nil | non_neg_integer()
+  def __distance(env, expr), do: Map.get(env.locals, expr)
 
   @spec scope_chain(t) :: Enumerable.t(Scope.t())
   defp scope_chain(%__MODULE__{stack: [current | _], scopes: scopes}) do

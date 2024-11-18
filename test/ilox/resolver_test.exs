@@ -622,5 +622,15 @@ defmodule Ilox.ResolverTest do
                }
                """)
     end
+
+    test "self-inheritance" do
+      assert {:error, :resolver,
+              [
+                [
+                  token: %Token{type: :identifier, lexeme: "Foo"},
+                  message: "A class can't inherit from itself."
+                ]
+              ]} = resolve("class Foo < Foo {}")
+    end
   end
 end

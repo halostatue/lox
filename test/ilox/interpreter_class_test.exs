@@ -93,4 +93,72 @@ defmodule Ilox.InterpreterClassTest do
                """)
     end
   end
+
+  describe "run/2: inheritance" do
+    test "the superclass must be a class" do
+      assert {:error, :runtime, errors: "[line 2] Error: Superclass must be a class.", output: []} =
+               run("""
+               var NotaClass = "I am a class, really, I am.";
+               class Subclass < NotaClass {}
+               """)
+    end
+
+    test "methods can be found in superclasses" do
+      assert {:ok, output: ["Fry until golden brown."]} =
+               run("""
+               class Doughnut {
+                 cook() {
+                   print "Fry until golden brown.";
+                 }
+               }
+
+               class BostonCreme < Doughnut {
+               }
+
+               BostonCreme().cook();
+               """)
+    end
+
+    test "subclass methods override superclass methods" do
+      assert {:ok,
+              output: ["Fry until golden brown.", "Pipe full of custard and coat with chocolate."]} =
+               run("""
+               class Doughnut {
+                 cook() {
+                   print "Fry until golden brown.";
+                 }
+               }
+
+               class BostonCreme < Doughnut {
+                 cook() {
+                   print "Fry until golden brown.";
+                   print "Pipe full of custard and coat with chocolate.";
+                 }
+               }
+
+               BostonCreme().cook();
+               """)
+    end
+
+    test "subclass methods can call superclass method implementations" do
+      assert {:ok,
+              output: ["Fry until golden brown.", "Pipe full of custard and coat with chocolate."]} =
+               run("""
+               class Doughnut {
+                 cook() {
+                   print "Fry until golden brown.";
+                 }
+               }
+
+               class BostonCreme < Doughnut {
+                 cook() {
+                   super.cook();
+                   print "Pipe full of custard and coat with chocolate.";
+                 }
+               }
+
+               BostonCreme().cook();
+               """)
+    end
+  end
 end
