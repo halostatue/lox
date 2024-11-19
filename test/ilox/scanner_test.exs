@@ -127,15 +127,15 @@ defmodule Ilox.ScannerTest do
     test "non-printable ASCII characters outside of strings produce errors" do
       assert {:error, :scanner,
               [
-                "[line 1] Error: Unexpected character (`ë`).",
-                "[line 1] Error: Unexpected character (`ö`)."
+                "[line 1] Error: Unexpected character ('ë').",
+                "[line 1] Error: Unexpected character ('ö')."
               ]} = Scanner.scan("hëllö")
     end
 
     test "strings do not support quote escaping" do
       assert {:error, :scanner,
               [
-                "[line 1] Error: Unexpected character (`\\`).",
+                "[line 1] Error: Unexpected character ('\\').",
                 "[line 1] Error: Unterminated string."
               ]} =
                Scanner.scan("\"I say \\\"hello\\\".")

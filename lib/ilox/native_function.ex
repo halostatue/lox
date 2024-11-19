@@ -40,7 +40,7 @@ defmodule Ilox.NativeFunction do
 
   defimpl String.Chars do
     def to_string(%{name: name, arity: arity}),
-      do: "<native fun: #{name}/#{arity}>"
+      do: "<native fun #{name}/#{arity}>"
   end
 
   defimpl Inspect do

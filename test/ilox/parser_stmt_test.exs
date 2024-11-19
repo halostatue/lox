@@ -21,8 +21,7 @@ defmodule Ilox.ParserStmtTest do
       test "-#{inspect(input)};" do
         assert {:ok,
                 [
-                  {:expr_stmt,
-                   {:unary, %Token{type: :minus}, {:literal, unquote(literal)}}}
+                  {:expr_stmt, {:unary, %Token{type: :minus}, {:literal, unquote(literal)}}}
                 ]} =
                  Parser.parse("-#{unquote(input)};")
       end
@@ -131,8 +130,7 @@ defmodule Ilox.ParserStmtTest do
       test "!#{inspect(input)};" do
         assert {:ok,
                 [
-                  {:expr_stmt,
-                   {:unary, %Token{type: :bang}, {:literal, unquote(literal)}}}
+                  {:expr_stmt, {:unary, %Token{type: :bang}, {:literal, unquote(literal)}}}
                 ]} =
                  Parser.parse("!#{unquote(input)};")
       end
@@ -193,8 +191,7 @@ defmodule Ilox.ParserStmtTest do
       check all(string <- literal(:string)) do
         assert {:ok,
                 [
-                  {:expr_stmt,
-                   {:group, {:literal, %Token{type: :string, literal: ^string}}}}
+                  {:expr_stmt, {:group, {:literal, %Token{type: :string, literal: ^string}}}}
                 ]} =
                  Parser.parse("(\"#{string}\");")
       end
@@ -206,8 +203,7 @@ defmodule Ilox.ParserStmtTest do
 
         assert {:ok,
                 [
-                  {:expr_stmt,
-                   {:group, {:literal, %Token{type: :number, literal: ^literal}}}}
+                  {:expr_stmt, {:group, {:literal, %Token{type: :number, literal: ^literal}}}}
                 ]} =
                  Parser.parse("(#{int});")
       end
@@ -217,8 +213,7 @@ defmodule Ilox.ParserStmtTest do
       check all(float <- float(min: 0.0)) do
         assert {:ok,
                 [
-                  {:expr_stmt,
-                   {:group, {:literal, %Token{type: :number, literal: ^float}}}}
+                  {:expr_stmt, {:group, {:literal, %Token{type: :number, literal: ^float}}}}
                 ]} =
                  Parser.parse("(#{float});")
       end
@@ -272,7 +267,7 @@ defmodule Ilox.ParserStmtTest do
     end
 
     test "nil = right; errors on assignment target" do
-      assert {:error, :parser, ["[line 1] Error: Invalid assignment target."]} =
+      assert {:error, :parser, ["[line 1] Error at '=': Invalid assignment target."]} =
                Parser.parse("nil = right;")
     end
   end

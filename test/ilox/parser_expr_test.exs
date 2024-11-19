@@ -5,11 +5,37 @@ defmodule Ilox.ParserExprTest do
   alias Ilox.Parser
   alias Ilox.Token
 
+  import Ilox.SourceTools
+
   @atomics [
     {"true", true},
     {"false", false},
     {"nil", nil}
   ]
+
+  describe "parse_expr/1: empty source" do
+    test "results in an error" do
+      assert {:error, :parser, ["[line 1] Error: Expect expression."]} = Parser.parse("")
+    end
+
+    files = lox_files(%{"comments" => ["only_line_comment", "only_line_comment_and_line"]})
+
+    for {filename, name} <- files do
+      test "#{name}" do
+        {source, _, _} = load_lox(unquote(filename))
+
+        count =
+          source
+          |> String.split("\n")
+          |> Enum.count()
+
+        count = if count == 1, do: 1, else: count - 1
+
+        assert {:error, :parser, messages} = Parser.parse(source)
+        assert ["[line #{count}] Error: Expect expression."] == messages
+      end
+    end
+  end
 
   describe "parse_expr/1: primary literal expressions" do
     for {left, left_literal} <- @atomics do
@@ -33,8 +59,7 @@ defmodule Ilox.ParserExprTest do
           ] do
         test "#{left} #{operator} #{right} -> {:binary, {:literal, #{inspect(left_literal)}}, #{token}, {:literal, #{inspect(right_literal)}}}" do
           assert {:ok,
-                  {:binary, {:literal, unquote(left_literal)},
-                   %Token{type: unquote(token)},
+                  {:binary, {:literal, unquote(left_literal)}, %Token{type: unquote(token)},
                    {:literal, unquote(right_literal)}}} =
                    Parser.parse_expr("#{unquote(left)} #{unquote(operator)} #{unquote(right)}")
         end
@@ -174,8 +199,7 @@ defmodule Ilox.ParserExprTest do
     property "non-negative float -> {:literal, :number}" do
       check all(float <- float(min: 0.0)) do
         assert {:ok,
-                {:unary, %Token{type: :bang},
-                 {:literal, %Token{type: :number, literal: ^float}}}} =
+                {:unary, %Token{type: :bang}, {:literal, %Token{type: :number, literal: ^float}}}} =
                  Parser.parse_expr("!#{float}")
       end
     end
@@ -290,8 +314,7 @@ defmodule Ilox.ParserExprTest do
 
     test "fn(1)" do
       assert {:ok,
-              {:call, {:variable, %Token{lexeme: "fn"}}, [{:literal, %Token{literal: 1.0}}],
-               1,
+              {:call, {:variable, %Token{lexeme: "fn"}}, [{:literal, %Token{literal: 1.0}}], 1,
                %Token{type: :right_paren}}} =
                Parser.parse_expr("fn(1)")
     end
@@ -308,10 +331,11 @@ defmodule Ilox.ParserExprTest do
                Parser.parse_expr("fn(1, 2, 3)")
     end
 
+    @tag :focus
     test "fn(256-args)" do
-      args = Enum.join(1..256, ", ")
+      args = Enum.map_join(1..256, ",\n", &(&1 * 2))
 
-      assert {:error, :parser, ["[line 1] Error: Can't have more than 255 arguments."]} =
+      assert {:error, :parser, ["[line 256] Error at '512': Can't have more than 255 arguments."]} =
                Parser.parse_expr("fn(#{args})")
     end
 
@@ -320,8 +344,7 @@ defmodule Ilox.ParserExprTest do
       # parser is likely to have some issues. For now, we are leaving it as a successful
       # parse.
       assert {:ok,
-              {:call, {:variable, %Token{lexeme: "fn"}}, [{:literal, %Token{literal: 1.0}}],
-               1,
+              {:call, {:variable, %Token{lexeme: "fn"}}, [{:literal, %Token{literal: 1.0}}], 1,
                %Token{type: :right_paren}}} =
                Parser.parse_expr("fn(1,)")
     end

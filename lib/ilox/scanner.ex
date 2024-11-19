@@ -115,7 +115,7 @@ defmodule Ilox.Scanner do
     do: handle_identifier(%{ctx | lexeme: c})
 
   defp handle_codepoint(invalid, ctx),
-    do: error(ctx, "Unexpected character (`#{invalid}`).")
+    do: error(ctx, "Unexpected character ('#{invalid}').")
 
   defp handle_identifier(%{src: ""} = ctx), do: add_identifier_token(ctx)
 

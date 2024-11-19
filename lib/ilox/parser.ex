@@ -113,37 +113,35 @@ defmodule Ilox.Parser do
       end
 
     {_, ctx} = expect(ctx, :left_brace, "Expect '{' before class body.")
-    {methods, ctx} = parse_class_methods(ctx, [])
+    {methods, _count, ctx} = parse_class_methods(ctx)
     {_, ctx} = expect(ctx, :right_brace, "Expect '}' after class body.")
     add_statement(ctx, {:class_decl, name, superclass, methods})
   end
 
   defp parse_declaration(:fun, ctx), do: parse_function_declaration(ctx, "function")
 
-  defp parse_class_methods(%{tokens: []} = ctx, methods), do: finish_list(ctx, methods)
+  defp parse_class_methods(ctx), do: parse_class_methods(ctx, [], 0)
 
-  defp parse_class_methods(%{tokens: [%Token{type: :eof} | _]} = ctx, methods),
-    do: finish_list(ctx, methods)
+  defp parse_class_methods(%{tokens: []} = ctx, methods, count),
+    do: finish_list(ctx, methods, count)
 
-  defp parse_class_methods(%{tokens: [%Token{type: :right_brace} | _]} = ctx, methods),
-    do: finish_list(ctx, methods)
+  defp parse_class_methods(%{tokens: [%Token{type: :eof} | _]} = ctx, methods, count),
+    do: finish_list(ctx, methods, count)
 
-  defp parse_class_methods(ctx, methods) do
+  defp parse_class_methods(%{tokens: [%Token{type: :right_brace} | _]} = ctx, methods, count),
+    do: finish_list(ctx, methods, count)
+
+  defp parse_class_methods(ctx, methods, count) do
     %{statements: [method | statements]} =
       ctx = parse_function_declaration(%{ctx | break: ctx.break + 1}, "method")
 
-    parse_class_methods(%{ctx | statements: statements}, [method | methods])
+    parse_class_methods(%{ctx | statements: statements}, [method | methods], count + 1)
   end
 
   defp parse_function_declaration(ctx, kind) do
     {name, ctx} = expect_identifier(ctx, kind)
-
     {_, ctx} = expect_left_paren(ctx, kind)
-    {params, %{tokens: [current | _]} = ctx} = parse_function_params(ctx, [])
-
-    arity = Enum.count(params)
-    ctx = check_arity(ctx, arity, current, "parameters")
-
+    {params, arity, ctx} = parse_function_params(ctx)
     {_, ctx} = expect_right_paren(ctx, "parameters")
     {_, ctx} = expect(ctx, :left_brace, "Expect '{' before #{kind} body.")
 
@@ -152,22 +150,28 @@ defmodule Ilox.Parser do
     add_statement(%{ctx | statements: statements}, {:fun_decl, name, params, arity, body})
   end
 
-  defp parse_function_params(%{tokens: []} = ctx, params), do: finish_list(ctx, params)
+  defp parse_function_params(ctx), do: parse_function_params(ctx, [], 0)
 
-  defp parse_function_params(%{tokens: [%Token{type: :eof} | _]} = ctx, params),
-    do: finish_list(ctx, params)
+  defp parse_function_params(%{tokens: []} = ctx, params, count),
+    do: finish_list(ctx, params, count)
 
-  defp parse_function_params(%{tokens: [%Token{type: :right_paren} | _]} = ctx, params),
-    do: finish_list(ctx, params)
+  defp parse_function_params(%{tokens: [%Token{type: :eof} | _]} = ctx, params, count),
+    do: finish_list(ctx, params, count)
 
-  defp parse_function_params(ctx, params) do
+  defp parse_function_params(%{tokens: [%Token{type: :right_paren} | _]} = ctx, params, count),
+    do: finish_list(ctx, params, count)
+
+  defp parse_function_params(%{tokens: [token | _]} = ctx, params, count) do
     {param, %{tokens: [current | tokens]} = ctx} = expect_identifier(ctx, "parameter")
     params = [param | params]
+    count = count + 1
+
+    ctx = check_max_arity(ctx, count, token, "parameters")
 
     if type_match(current, :comma) do
-      parse_function_params(%{ctx | tokens: tokens}, params)
+      parse_function_params(%{ctx | tokens: tokens}, params, count)
     else
-      finish_list(ctx, params)
+      finish_list(ctx, params, count)
     end
   end
 
@@ -360,9 +364,15 @@ defmodule Ilox.Parser do
       {value, ctx} = parse_assignment(ctx)
 
       case expr do
-        {:variable, name} -> {{:assignment, name, value}, ctx}
-        {:get, object, name} -> {{:set, object, name, value}, ctx}
-        _ -> raise Ilox.ParserError, error(ctx, equals, "Invalid assignment target.")
+        {:variable, name} ->
+          {{:assignment, name, value}, ctx}
+
+        {:get, object, name} ->
+          {{:set, object, name, value}, ctx}
+
+        _ ->
+          raise Ilox.ParserError,
+                error(ctx, equals, message: "Invalid assignment target.", where: true)
       end
     else
       {expr, ctx}
@@ -414,7 +424,8 @@ defmodule Ilox.Parser do
 
       case parse_unary(ctx) do
         {nil, ctx} ->
-          raise Ilox.ParserError, error(ctx, current, "Expect right-hand expression.", true)
+          raise Ilox.ParserError,
+                error(ctx, current, message: "Expect right-hand expression.", where: true)
 
         {right, ctx} ->
           {{:unary, operator, right}, ctx}
@@ -441,42 +452,50 @@ defmodule Ilox.Parser do
   end
 
   defp parse_call(:left_paren, ctx, expr) do
-    {args, %{tokens: [current | _]} = ctx} = parse_call_args(ctx, [])
-    count = Enum.count(args)
-    ctx = check_arity(ctx, count, current, "arguments")
+    {args, count, ctx} = parse_call_args(ctx)
     {closing, ctx} = expect_right_paren(ctx, "arguments")
     parse_call(ctx, {:call, expr, args, count, closing})
   end
 
   defp parse_call(:dot, ctx, expr) do
-    {name, ctx} = expect_identifier(ctx, "variable", "after '.'")
+    {name, ctx} = expect_identifier(ctx, "property", " after '.'")
     parse_call(ctx, {:get, expr, name})
   end
 
-  defp check_arity(ctx, count, token, type) when count > 255 do
-    error = Errors.format(%{token: token, message: "Can't have more than 255 #{type}."})
+  defp check_max_arity(ctx, count, token, type) when count > 255 do
+    error =
+      Errors.format(%{
+        token: token,
+        message: "Can't have more than 255 #{type}.",
+        where: Errors.where(token)
+      })
 
     %{ctx | errors: [error | ctx.errors]}
   end
 
-  defp check_arity(ctx, _count, _token, _type), do: ctx
+  defp check_max_arity(ctx, _count, _token, _type), do: ctx
 
-  defp parse_call_args(%{tokens: []} = ctx, args), do: finish_list(ctx, args)
+  defp parse_call_args(ctx), do: parse_call_args(ctx, [], 0)
 
-  defp parse_call_args(%{tokens: [%Token{type: :eof} | _]} = ctx, args),
-    do: finish_list(ctx, args)
+  defp parse_call_args(%{tokens: []} = ctx, args, count), do: finish_list(ctx, args, count)
 
-  defp parse_call_args(%{tokens: [%Token{type: :right_paren} | _]} = ctx, args),
-    do: finish_list(ctx, args)
+  defp parse_call_args(%{tokens: [%Token{type: :eof} | _]} = ctx, args, count),
+    do: finish_list(ctx, args, count)
 
-  defp parse_call_args(ctx, args) do
+  defp parse_call_args(%{tokens: [%Token{type: :right_paren} | _]} = ctx, args, count),
+    do: finish_list(ctx, args, count)
+
+  defp parse_call_args(%{tokens: [token | _]} = ctx, args, count) do
     {arg, %{tokens: [current | tokens]} = ctx} = parse_expression(ctx)
     args = [arg | args]
+    count = count + 1
+
+    ctx = check_max_arity(ctx, count, token, "arguments")
 
     if type_match(current, :comma) do
-      parse_call_args(%{ctx | tokens: tokens}, args)
+      parse_call_args(%{ctx | tokens: tokens}, args, count)
     else
-      finish_list(ctx, args)
+      finish_list(ctx, args, count)
     end
   end
 
@@ -515,7 +534,7 @@ defmodule Ilox.Parser do
   end
 
   defp parse_primary(%{tokens: [current | _]} = ctx) do
-    raise Ilox.ParserError, error(ctx, current)
+    raise Ilox.ParserError, error(ctx, current, where: true)
   end
 
   defp expect_identifier(ctx, kind, extra \\ nil),
@@ -549,7 +568,8 @@ defmodule Ilox.Parser do
 
       case consumer.(ctx) do
         {nil, ctx} ->
-          raise Ilox.ParserError, error(ctx, current, "Expect right-hand expression.", true)
+          raise Ilox.ParserError,
+                error(ctx, current, message: "Expect right-hand expression.", where: true)
 
         {right, ctx} ->
           expr = {expr_type, expr, operator, right}
@@ -596,7 +616,14 @@ defmodule Ilox.Parser do
   defp next_token(%{tokens: [%Token{} = previous | tokens]} = ctx),
     do: {previous, %{ctx | tokens: tokens}}
 
-  defp error(ctx, token, message \\ "Expect expression.", where \\ false)
+  defp error(ctx, token, options \\ []) do
+    error(
+      ctx,
+      token,
+      Keyword.get(options, :message, "Expect expression."),
+      Keyword.get(options, :where, false)
+    )
+  end
 
   defp error(ctx, token, message, false),
     do: [ctx: ctx, message: message, token: token]
@@ -604,5 +631,5 @@ defmodule Ilox.Parser do
   defp error(ctx, token, message, true),
     do: [ctx: ctx, message: message, token: token, where: Errors.where(token)]
 
-  defp finish_list(ctx, list), do: {Enum.reverse(list), ctx}
+  defp finish_list(ctx, list, count), do: {Enum.reverse(list), count, ctx}
 end

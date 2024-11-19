@@ -1,0 +1,1 @@
+"str"(); // expect: [line 1] Error: Can only call functions and classes.

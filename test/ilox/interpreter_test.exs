@@ -290,7 +290,7 @@ defmodule Ilox.InterpreterTest do
 
   describe "run/2: function calls" do
     test "print clock;" do
-      assert {:ok, output: ["<native fun: clock/0>"]} = run("print clock;")
+      assert {:ok, output: ["<native fun clock/0>"]} = run("print clock;")
     end
 
     test "print clock();" do

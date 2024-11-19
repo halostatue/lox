@@ -4,13 +4,14 @@ defmodule Ilox.Resolver do
   """
 
   alias Ilox.Env
+  alias Ilox.Errors
   alias Ilox.Token
 
   defmodule Ctx do
     @moduledoc false
 
     @type t :: %__MODULE__{
-            class_type: :none | :class,
+            class_type: :none | :class | :subclass,
             errors: list(keyword()),
             function_type: :none | :function | :initializer | :method,
             locals: %{required(tuple()) => non_neg_integer()},
@@ -27,8 +28,14 @@ defmodule Ilox.Resolver do
 
     def new(fields \\ []), do: struct!(__MODULE__, fields)
 
-    def finish(%__MODULE__{errors: [_ | _] = errors}),
-      do: {:error, :resolver, Enum.reverse(errors)}
+    def finish(%__MODULE__{errors: [_ | _] = errors}) do
+      errors =
+        errors
+        |> Enum.map(&Errors.format/1)
+        |> Enum.reverse()
+
+      {:error, :resolver, errors}
+    end
 
     def finish(%__MODULE__{test_mode: true} = ctx) do
       Map.drop(Map.from_struct(ctx), [:test_mode, :scopes, :errors, :function_type, :class_type])
@@ -48,7 +55,8 @@ defmodule Ilox.Resolver do
           ctx,
           Map.has_key?(scope, name.lexeme),
           name,
-          "Already declared '#{name.lexeme}' in this scope."
+          "Already declared '#{name.lexeme}' in this scope.",
+          true
         )
 
       %{ctx | scopes: [Map.put(scope, name.lexeme, false) | scopes]}
@@ -62,10 +70,18 @@ defmodule Ilox.Resolver do
     def __define(%__MODULE__{scopes: [scope | scopes]} = ctx, name),
       do: %{ctx | scopes: [Map.put(scope, name, true) | scopes]}
 
-    def maybe_error(%__MODULE__{} = ctx, true, token, message),
+    def maybe_error(ctx, test?, token, message, where? \\ false)
+
+    def maybe_error(%__MODULE__{} = ctx, true, token, message, true),
+      do: %{
+        ctx
+        | errors: [[token: token, message: message, where: Errors.where(token)] | ctx.errors]
+      }
+
+    def maybe_error(%__MODULE__{} = ctx, true, token, message, false),
       do: %{ctx | errors: [[token: token, message: message] | ctx.errors]}
 
-    def maybe_error(%__MODULE__{} = ctx, false, _token, _message), do: ctx
+    def maybe_error(%__MODULE__{} = ctx, false, _token, _message, _where?), do: ctx
   end
 
   def resolve(%Env{} = env, statements, test_mode \\ false) do
@@ -110,11 +126,17 @@ defmodule Ilox.Resolver do
 
   defp resolve_statement(ctx, {:return_stmt, token, expr}) do
     ctx
-    |> Ctx.maybe_error(ctx.function_type == :none, token, "Can't return from top-level code.")
+    |> Ctx.maybe_error(
+      ctx.function_type == :none,
+      token,
+      "Can't return from top-level code.",
+      true
+    )
     |> Ctx.maybe_error(
       ctx.function_type == :initializer && expr != nil,
       token,
-      "Can't return a value from an initializer."
+      "Can't return a value from an initializer.",
+      true
     )
     |> resolve_expression(expr)
   end
@@ -184,15 +206,26 @@ defmodule Ilox.Resolver do
   defp resolve_expression(ctx, {:literal, _}), do: ctx
 
   defp resolve_expression(%{class_type: :none} = ctx, {:this, keyword}),
-    do: Ctx.maybe_error(ctx, true, keyword, "Can't use 'this' outside of a class.")
+    do: Ctx.maybe_error(ctx, true, keyword, "Can't use 'this' outside of a class.", true)
 
   defp resolve_expression(ctx, {:this, keyword} = expr), do: resolve_local(ctx, expr, keyword)
 
-  defp resolve_expression(%{class_type: :none} = ctx, {:super, keyword, _method}),
-    do: Ctx.maybe_error(ctx, true, keyword, "Can't use 'super' outside of a class.")
-
-  defp resolve_expression(ctx, {:super, keyword, _method} = expr),
-    do: resolve_local(ctx, expr, keyword)
+  defp resolve_expression(ctx, {:super, keyword, _method} = expr) do
+    ctx
+    |> Ctx.maybe_error(
+      ctx.class_type == :none,
+      keyword,
+      "Can't use 'super' outside of a class.",
+      true
+    )
+    |> Ctx.maybe_error(
+      ctx.class_type == :class,
+      keyword,
+      "Can't use 'super' in a class with no superclass.",
+      true
+    )
+    |> resolve_local(expr, keyword)
+  end
 
   defp resolve_expression(ctx, {:logical, left, _token, right}) do
     ctx
@@ -229,7 +262,8 @@ defmodule Ilox.Resolver do
       ctx,
       Map.get(scope, name.lexeme) == false,
       name,
-      "Can't read local variable '#{name.lexeme}' in its own initializer."
+      "Can't read local variable '#{name.lexeme}' in its own initializer.",
+      true
     )
   end
 
@@ -267,10 +301,33 @@ defmodule Ilox.Resolver do
 
   @spec resolve_methods(Ctx.t(), list(tuple())) :: Ctx.t()
   defp resolve_methods(ctx, methods) do
+    ctx = check_duplicate_methods(ctx, methods)
+
     Enum.reduce(methods, ctx, fn {:fun_decl, %Token{lexeme: name}, _params, _arity, _body} =
                                    method,
                                  ctx ->
       resolve_function(ctx, method, if(name == "init", do: :initializer, else: :method))
+    end)
+  end
+
+  defp check_duplicate_methods(ctx, methods) do
+    methods
+    |> Enum.group_by(&elem(&1, 1).lexeme, &{elem(&1, 1), elem(&1, 3)})
+    |> Enum.reject(&(match?({_, [_]}, &1) || match?({_, []}, &1)))
+    |> Enum.reduce(ctx, fn {_name, [{fname, farity} | rest]}, ctx ->
+      Enum.reduce(rest, ctx, fn {name, arity}, ctx ->
+        redecl = "#{name.lexeme}/#{arity}"
+        decl = "#{fname.lexeme}/#{farity}"
+        line = fname.line
+
+        Ctx.maybe_error(
+          ctx,
+          true,
+          name,
+          "Method '#{redecl}' already declared as '#{decl}' at line #{line}.",
+          true
+        )
+      end)
     end)
   end
 
@@ -281,9 +338,11 @@ defmodule Ilox.Resolver do
     |> Ctx.maybe_error(
       name.lexeme == superclass.lexeme,
       superclass,
-      "A class can't inherit from itself."
+      "A class can't inherit from itself.",
+      true
     )
     |> resolve_expression(expr)
+    |> Map.put(:class_type, :subclass)
     |> Ctx.push()
     |> Ctx.__define("super")
   end

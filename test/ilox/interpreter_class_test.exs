@@ -1,7 +1,7 @@
 defmodule Ilox.InterpreterClassTest do
   use ExUnit.Case, async: true
 
-  import Ilox.SourceTools, only: [run: 1, run: 2]
+  import Ilox.SourceTools, only: [run: 1]
 
   describe "run/2: class basics" do
     test "print class" do

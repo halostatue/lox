@@ -135,7 +135,7 @@ defmodule Ilox.Interpreter do
   defp exec_statement(env, {:if_stmt, condition, then_branch, else_branch}) do
     {env, condition} = eval_expression(env, condition)
 
-    case condition do
+    case !!condition do
       true -> exec_statement(env, then_branch)
       false when is_nil(else_branch) -> env
       false -> exec_statement(env, else_branch)
@@ -268,10 +268,7 @@ defmodule Ilox.Interpreter do
   defp eval_expression(env, {:super, keyword, name} = expr) do
     distance = Env.__distance(env, expr)
     superclass = Env.__get(env, keyword, distance)
-
-    instance =
-      Env.__get(env, %{keyword | lexeme: "this"}, distance - 1)
-      |> IO.inspect()
+    instance = Env.__get(env, %{keyword | lexeme: "this"}, distance - 1)
 
     case Class.method(superclass, name.lexeme) do
       {:ok, method} ->
@@ -292,6 +289,7 @@ defmodule Ilox.Interpreter do
 
     case eval_expression(env, object) do
       {env, {Instance, _id} = ref} -> Instance.set(ref, env, name, value)
+      {env, %Instance{} = instance} -> Instance.set(instance, env, name, value)
       _ -> raise Ilox.RuntimeError, token: name, message: "Only instances have fields."
     end
   end
@@ -315,10 +313,12 @@ defmodule Ilox.Interpreter do
       raise Ilox.RuntimeError, token: closing, message: "Can only call functions and classes."
     end
 
-    if Callable.arity(callee) != argc do
+    arity = Callable.arity(callee)
+
+    if arity != argc do
       raise Ilox.RuntimeError,
         token: closing,
-        message: "Expected #{callee.arity} arguments but got #{argc}."
+        message: "Expected #{arity} arguments but got #{argc}."
     end
 
     {env, arguments} =

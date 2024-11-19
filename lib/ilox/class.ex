@@ -29,15 +29,16 @@ defmodule Ilox.Class do
   def __call(%__MODULE__{} = class, %Env{} = env, args) do
     instance = Instance.new(class: class)
 
-    instance =
+    {env, instance} =
       case method(class, "init") do
         {:ok, init} ->
-          init
-          |> Function.bind(instance, env)
-          |> Callable.call(env, args)
+          {env, init} = Function.bind(init, instance, env)
+
+          Callable.call(init, env, args)
+          |> IO.inspect()
 
         :error ->
-          instance
+          {env, instance}
       end
 
     env = Env.put_instance(env, instance)

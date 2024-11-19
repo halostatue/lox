@@ -552,12 +552,7 @@ defmodule Ilox.ResolverTest do
   describe "errors" do
     test "read in initializer" do
       assert {:error, :resolver,
-              [
-                [
-                  token: %Token{lexeme: "a"},
-                  message: "Can't read local variable 'a' in its own initializer."
-                ]
-              ]} =
+              ["[line 3] Error at 'a': Can't read local variable 'a' in its own initializer."]} =
                resolve("""
                var a = "foo";
                {
@@ -567,10 +562,7 @@ defmodule Ilox.ResolverTest do
     end
 
     test "redeclaration in local scope" do
-      assert {:error, :resolver,
-              [
-                [token: %Token{lexeme: "a"}, message: "Already declared 'a' in this scope."]
-              ]} =
+      assert {:error, :resolver, ["[line 3] Error at 'a': Already declared 'a' in this scope."]} =
                resolve("""
                {
                  var a;
@@ -580,10 +572,7 @@ defmodule Ilox.ResolverTest do
     end
 
     test "redeclaration in function scope" do
-      assert {:error, :resolver,
-              [
-                [token: %Token{lexeme: "a"}, message: "Already declared 'a' in this scope."]
-              ]} =
+      assert {:error, :resolver, ["[line 3] Error at 'a': Already declared 'a' in this scope."]} =
                resolve("""
                fun foo() {
                  var a;
@@ -594,26 +583,19 @@ defmodule Ilox.ResolverTest do
 
     test "return from top-level scope" do
       assert {:error, :resolver,
-              [
-                [token: %Token{type: :return}, message: "Can't return from top-level code."]
-              ]} = resolve("return;")
+              ["[line 1] Error at 'return': Can't return from top-level code."]} =
+               resolve("return;")
     end
 
     test "return from nested scope" do
       assert {:error, :resolver,
-              [
-                [token: %Token{type: :return}, message: "Can't return from top-level code."]
-              ]} = resolve("{ return; }")
+              ["[line 1] Error at 'return': Can't return from top-level code."]} =
+               resolve("{ return; }")
     end
 
     test "return value from initializer" do
       assert {:error, :resolver,
-              [
-                [
-                  token: %Token{type: :return},
-                  message: "Can't return a value from an initializer."
-                ]
-              ]} =
+              ["[line 3] Error at 'return': Can't return a value from an initializer."]} =
                resolve("""
                class Foo {
                  init() {
@@ -624,13 +606,44 @@ defmodule Ilox.ResolverTest do
     end
 
     test "self-inheritance" do
+      assert {:error, :resolver, ["[line 1] Error at 'Foo': A class can't inherit from itself."]} =
+               resolve("class Foo < Foo {}")
+    end
+
+    test "method redeclaration" do
       assert {:error, :resolver,
-              [
-                [
-                  token: %Token{type: :identifier, lexeme: "Foo"},
-                  message: "A class can't inherit from itself."
-                ]
-              ]} = resolve("class Foo < Foo {}")
+              ["[line 4] Error at 'foo': Method 'foo/0' already declared as 'foo/0' at line 2."]} =
+               resolve("""
+               class Bar {
+                 foo() {}
+                 bar() {}
+                 foo() {}
+               }
+               """)
+    end
+
+    test "'this' outside of a class" do
+      assert {:error, :resolver,
+              ["[line 1] Error at 'this': Can't use 'this' outside of a class."]} =
+               resolve("print this;")
+    end
+
+    test "'super' outside of a class" do
+      assert {:error, :resolver,
+              ["[line 1] Error at 'super': Can't use 'super' outside of a class."]} =
+               resolve("print super.method();")
+    end
+
+    test "'super' outside of a subclass" do
+      assert {:error, :resolver,
+              ["[line 3] Error at 'super': Can't use 'super' in a class with no superclass."]} =
+               resolve("""
+               class Bar {
+                 method() {
+                   print super.method();
+                 }
+               }
+               """)
     end
   end
 end
