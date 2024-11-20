@@ -201,7 +201,7 @@ defmodule Ilox.Interpreter do
             arity: arity,
             decl: fun,
             closure_id: Env.current_scope(env),
-            init: name == "init"
+            init: name.lexeme == "init"
           )
         }
       end)
@@ -288,7 +288,7 @@ defmodule Ilox.Interpreter do
     {env, value} = eval_expression(env, value)
 
     case eval_expression(env, object) do
-      {env, {Instance, _id} = ref} -> Instance.set(ref, env, name, value)
+      {env, {Instance, _instance} = ref} -> Instance.set(ref, env, name, value)
       {env, %Instance{} = instance} -> Instance.set(instance, env, name, value)
       _ -> raise Ilox.RuntimeError, token: name, message: "Only instances have fields."
     end
@@ -332,8 +332,8 @@ defmodule Ilox.Interpreter do
 
   defp eval_expression(env, {:get, object, name}) do
     case eval_expression(env, object) do
-      {env, {Instance, _id} = ref} -> Instance.get(ref, env, name)
-      {env, %Instance{id: id}} -> Instance.get({Instance, id}, env, name)
+      {env, {Instance, _instance} = ref} -> Instance.get(ref, env, name)
+      {env, %Instance{} = instance} -> Instance.get({Instance, instance}, env, name)
       _ -> raise Ilox.RuntimeError, token: name, message: "Only instances have properties."
     end
   end
@@ -374,7 +374,7 @@ defmodule Ilox.Interpreter do
   defp inspect_expression_value(_env, nil), do: "nil"
   defp inspect_expression_value(_env, value) when is_binary(value), do: ~s("#{value}")
 
-  defp inspect_expression_value(env, {Instance, _id} = ref),
+  defp inspect_expression_value(env, {Instance, _instance} = ref),
     do: to_string(Env.get_instance(env, ref))
 
   defp inspect_expression_value(env, value), do: stringify_expression_value(env, value)
@@ -387,7 +387,7 @@ defmodule Ilox.Interpreter do
     |> String.replace_suffix(".0", "")
   end
 
-  defp stringify_expression_value(env, {Instance, _id} = ref),
+  defp stringify_expression_value(env, {Instance, _instance} = ref),
     do: to_string(Env.get_instance(env, ref))
 
   defp stringify_expression_value(_env, value), do: to_string(value)

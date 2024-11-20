@@ -23,12 +23,15 @@ defmodule Ilox.Function do
 
   def new(opts \\ []), do: struct!(__MODULE__, opts)
 
-  @spec bind(t, Instance.t(), Env.t()) :: {Env.t(), t}
+  @spec bind(t, {Instance, Instance.t()} | Instance.t(), Env.t()) :: {Env.t(), t}
+  def bind(%__MODULE__{} = fun, {Instance, _instance} = ref, %Env{} = env),
+    do: bind(fun, Env.get_instance(env, ref), env)
+
   def bind(%__MODULE__{} = fun, %Instance{} = instance, %Env{} = env) do
     scope =
       Id.new()
       |> Scope.new(fun.closure_id)
-      |> Scope.put("this", instance)
+      |> Scope.put("this", {Instance, instance})
 
     {Env.put_scope(env, scope), %{fun | closure_id: scope.id}}
   end
@@ -48,23 +51,22 @@ defmodule Ilox.Function do
       env =
         params
         |> Enum.zip(arguments)
-        |> Enum.reduce(env, fn {name, value}, env -> elem(Env.define(env, name, value), 0) end)
+        |> Enum.reduce(env, fn {k, v}, env -> elem(Env.define(env, k, v), 0) end)
 
-      Ilox.Interpreter.eval_function_body(env, body)
+      env
+      |> Ilox.Interpreter.eval_function_body(body)
+      |> resolve_return_value(name, init)
     catch
-      {env, value} ->
-        cond do
-          init ->
-            ref = Env.get(env, %{name | lexeme: "this"})
-            {env, Env.get_instance(env, ref)}
-
-          match?({Instance, _id}, value) ->
-            {env, Env.get_instance(env, value)}
-
-          true ->
-            {env, value}
-        end
+      {env, value} -> resolve_return_value({env, value}, name, init)
     end
+
+    defp resolve_return_value({env, _value}, name, true),
+      do: {env, Env.get_instance(env, Env.get(env, %{name | lexeme: "this"}))}
+
+    defp resolve_return_value({env, {Instance, _instance} = ref}, _, _),
+      do: {env, Env.get_instance(env, ref)}
+
+    defp resolve_return_value({env, value}, _, _), do: {env, value}
   end
 
   defimpl String.Chars do

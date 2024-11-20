@@ -160,6 +160,15 @@ defmodule Ilox.Env do
     do: {do_assign(env, id, value, __distance(env, expr)), value}
 
   @doc false
+  @spec __assign(t, String.t(), term()) :: t
+  def __assign(%__MODULE__{} = env, name, value) do
+    case find_defining_scope(env, name) do
+      %Scope{} = scope -> assign_value(env, scope, name, value)
+      _ -> env
+    end
+  end
+
+  @doc false
   @spec get(t, Token.t()) :: term()
   def get(%__MODULE__{} = env, %Token{type: type, lexeme: name} = id)
       when type in [:identifier, :super, :this] do
@@ -226,17 +235,33 @@ defmodule Ilox.Env do
   end
 
   @doc false
-  @spec get_instance(t, Instance.t() | {Instance, Instance.id()}) :: Instance.t()
-  def get_instance(%__MODULE__{} = env, %Instance{id: id}),
-    do: get_instance(env, {Instance, id})
+  @spec get_instance(t, Instance.t() | {Instance, Instance.t()}) :: Instance.t()
+  def get_instance(%__MODULE__{} = env, %Instance{} = instance),
+    do: get_instance(env, {Instance, instance})
 
-  def get_instance(%__MODULE__{instances: instances}, {Instance, id}),
-    do: Map.fetch!(instances, id)
+  def get_instance(%__MODULE__{instances: instances}, {Instance, instance}) do
+    stored = Map.fetch!(instances, instance.id)
+    if instance.generation > stored.generation, do: instance, else: stored
+  end
 
   @doc false
-  @spec put_instance(t, Instance.t()) :: t
-  def put_instance(%__MODULE__{instances: instances} = env, %Instance{id: id} = instance),
-    do: %{env | instances: Map.put(instances, id, instance)}
+  @spec put_instance(t, Instance.t() | {Instance, Instance.t()}) :: t
+  def put_instance(%__MODULE__{} = env, %Instance{} = instance),
+    do: put_instance(env, {Instance, instance})
+
+  def put_instance(%__MODULE__{instances: instances} = env, {Instance, %Instance{} = instance}) do
+    case Map.fetch(instances, instance.id) do
+      {:ok, stored} ->
+        if stored.generation > instance.generation do
+          raise "Trying to store a younger instance #{instance.generation} than what is stored #{stored.generation}: #{inspect(instance)}"
+        end
+
+      _ ->
+        nil
+    end
+
+    %{env | instances: Map.put(instances, instance.id, instance)}
+  end
 
   @doc false
   @spec put_scope(t, Scope.t()) :: t
@@ -283,10 +308,10 @@ defmodule Ilox.Env do
     do: assign_value(env, scopes[current], name, value)
 
   @spec assign_value(t, Scope.t(), Scope.varname(), term()) :: t
-  defp assign_value(env, scope, name, %Instance{id: id} = instance) do
+  defp assign_value(env, scope, name, %Instance{} = instance) do
     env
     |> put_instance(instance)
-    |> assign_value(scope, name, {Instance, id})
+    |> assign_value(scope, name, {Instance, instance})
   end
 
   defp assign_value(env, scope, name, value) do

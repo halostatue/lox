@@ -35,14 +35,13 @@ defmodule Ilox.Class do
           {env, init} = Function.bind(init, instance, env)
 
           Callable.call(init, env, args)
-          |> IO.inspect()
 
         :error ->
           {env, instance}
       end
 
     env = Env.put_instance(env, instance)
-    {env, {Instance, instance.id}}
+    {env, {Instance, instance}}
   end
 
   @doc false

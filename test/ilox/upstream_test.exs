@@ -97,8 +97,6 @@ defmodule Ilox.UpstreamTest do
           "this_in_top_level_function"
         ],
         "variable" => [
-          # Resolver does not detect collision with parameters
-          # "collide_with_parameter",
           "duplicate_local",
           "duplicate_parameter",
           "use_local_in_initializer"
@@ -146,7 +144,7 @@ defmodule Ilox.UpstreamTest do
         ],
         "comments" => ["line_at_eof", "unicode"],
         "constructor" => [
-          #         "arguments",
+          "arguments",
           #         "call_init_early_return",
           # TODO not yet working
           # "call_init_explicitly",
