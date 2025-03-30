@@ -3,10 +3,13 @@ defmodule Lox do
   This is an implementation of the [Lox][1] language implemented (twice) in [Crafting
   Interpreters][2] by Robert Nystrom.
 
-  There are two versions that will eventually be present in this repo, both implemented in
-  Elixir. The first version (Ilox) is based on `jlox`, the Java implementation using
-  a [tree-walk interpreter][3]. The second version (VmLox) is based on `clox`, the
-  C implementation using a [bytecode virtual machine][4].
+  This repo implements `Ilox`, based on `jlox` (the Java implementation), using
+  a [tree-walk interpreter][3]. It mostly conforms to the specification, but development
+  has stopped on this due to lack of time.
+
+  > Initially there were plans to implement both the interpreted version and eventually
+  > the [bytecode virtual machine][4] version based on `clox` in C, but this is on hold
+  > indefinitely.
 
   ## The Lox Language
 
